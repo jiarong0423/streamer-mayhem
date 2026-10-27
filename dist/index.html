@@ -1,110 +1,117 @@
 <!doctype html>
-<html lang="zh-Hant">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://id.twitch.tv https://api.twitch.tv wss://eventsub.wss.twitch.tv http://127.0.0.1:8080 ws://127.0.0.1:8080 http://127.0.0.1:8091 ws://127.0.0.1:8091; object-src 'none'; base-uri 'none'">
-  <meta name="description" content="Streamer Mayhem 的本機九宮格模擬遊戲。">
+  <meta name="description" content="Streamer Mayhem: Twitch chat attacks, the streamer dodges.">
   <title>Streamer Mayhem — Synthetic Arcade</title>
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
   <div class="site-shell">
     <header class="topbar">
-      <a class="brand" href="#top" aria-label="Streamer Mayhem 首頁"><span class="brand-mark">M<span>✦</span></span><span>STREAMER<br><b>MAYHEM</b></span></a>
-      <nav aria-label="主導覽"><a class="active" href="#arena-section">遊戲場</a><a href="#how-to">怎麼玩</a></nav>
-      <div class="top-meta"><span class="status-dot"></span> LOCAL SIMULATION <span class="meta-slash">/</span> 01</div>
+      <a class="brand" href="#top" aria-label="Streamer Mayhem home"><span class="brand-mark">M<span>✦</span></span><span>STREAMER<br><b>MAYHEM</b></span></a>
+      <nav aria-label="Main"><a class="active" href="#arena-section">Arena</a><a href="#how-to">How to play</a></nav>
+      <div class="top-meta"><span class="status-dot"></span> SIMULATION MODE <span class="meta-slash">/</span> LIVE TWITCH OPTIONAL</div>
     </header>
 
     <main id="top">
       <section class="intro" aria-labelledby="page-title">
         <div class="intro-copy"><div class="eyebrow"><span class="tiny-square"></span> THE CHAT IS IN CONTROL <span class="line"></span> EPISODE 01</div>
           <h1 id="page-title">YOUR CHAT.<br><em>YOUR NEXT MOVE.</em></h1>
-          <p>觀眾決定攻擊，主播負責閃躲。<br>一個聊天室，一場九宮格生存戰。</p>
+          <p>Chat picks the attack. The streamer dodges.<br>One chat room, one nine-cell survival game.</p>
         </div>
         <div class="intro-note"><span class="note-symbol">↘</span><span>BUILT FOR<br><b>UNPREDICTABLE<br>LIVE MOMENTS.</b></span></div>
       </section>
 
-      <section class="workspace" id="arena-section" aria-label="九宮格遊戲場">
+      <section class="workspace" id="arena-section" aria-label="Arena">
         <div class="arena-column">
-          <div class="section-head"><div><span class="section-index">01 / THE ARENA</span><h2>九宮格閃躲 <span>Matrix Dodge</span></h2></div><span class="simulation-badge"><i></i> 合成模式</span></div>
+          <div class="section-head"><div><span class="section-index">01 / THE ARENA</span><h2>Matrix Dodge</h2></div><span class="simulation-badge"><i></i> Synthetic input</span></div>
           <div class="arena-frame">
             <div class="arena-toolbar"><div><span class="arena-icon">✳</span> MATRIX DODGE <span class="toolbar-muted">/ ROUND 01</span></div><div class="toolbar-mode"><span class="live-dot"></span> SIMULATED</div></div>
-            <div class="canvas-wrap"><canvas id="arena" width="1280" height="720" tabindex="0" aria-label="九宮格遊戲場：點擊位置或使用方向鍵移動合成角色"></canvas></div><div class="canvas-caption"><span>MOVE TO DODGE</span><span>遊戲角色以合成座標顯示</span></div>
-            <div class="arena-footer"><div class="footer-hint"><span class="keyboard-icon">↗</span><span><b>點擊遊戲場</b> 或使用方向鍵移動</span></div><div class="movement" aria-label="角色移動"><button type="button" data-move="left" aria-label="向左移動">←</button><button type="button" data-move="up" aria-label="向上移動">↑</button><button type="button" data-move="down" aria-label="向下移動">↓</button><button type="button" data-move="right" aria-label="向右移動">→</button></div><button id="reset" class="reset-button" type="button">↻ <span>重新開始</span></button></div>
+            <div class="canvas-wrap"><canvas id="arena" width="1280" height="720" tabindex="0" aria-label="Arena: click a position or use the arrow keys to move the synthetic character"></canvas></div><div class="canvas-caption"><span>MOVE TO DODGE</span><span>The character uses synthetic coordinates</span></div>
+            <div class="arena-footer"><div class="footer-hint"><span class="keyboard-icon">↗</span><span><b>Click the arena</b> or use the arrow keys to move</span></div><div class="movement" aria-label="Move character"><button type="button" data-move="left" aria-label="Move left">←</button><button type="button" data-move="up" aria-label="Move up">↑</button><button type="button" data-move="down" aria-label="Move down">↓</button><button type="button" data-move="right" aria-label="Move right">→</button></div><button id="reset" class="reset-button" type="button">↻ <span>Restart</span></button></div>
           </div>
-          <div class="stats" aria-label="遊戲統計"><div class="stat"><span>STATUS / 狀態</span><strong id="game-status" role="status">準備就緒</strong></div><div class="stat"><span>HEALTH / 生命</span><strong><span id="health">100</span><small> / 100</small></strong><div class="health-track"><i id="health-fill"></i></div></div><div class="stat"><span>SCORE / 分數</span><strong id="score">000</strong></div><div class="stat"><span>LAST MOVE / 上次結果</span><strong id="last-result">—</strong></div></div>
+          <div class="stats" aria-label="Game stats"><div class="stat"><span>STATUS</span><strong id="game-status" role="status">Ready</strong></div><div class="stat"><span>HEALTH</span><strong><span id="health">100</span><small> / 100</small></strong><div class="health-track"><i id="health-fill"></i></div></div><div class="stat"><span>SCORE</span><strong id="score">000</strong></div><div class="stat"><span>LAST MOVE</span><strong id="last-result">—</strong></div></div>
         </div>
 
-        <aside class="control-column" aria-label="聊天室模擬器">
-          <div class="section-head side-head"><div><span class="section-index">02 / THE CHAT</span><h2>聊天室實驗室</h2></div><span class="side-number">✳</span></div>
+        <aside class="control-column" aria-label="Streamer controls">
+          <div class="section-head side-head"><div><span class="section-index">02 / THE CHAT</span><h2>Streamer controls</h2></div><span class="side-number">✳</span></div>
           <div class="control-card">
-            <div class="chat-card-head"><div><span class="chat-icon">#</span><div><b>觀眾控制台</b><small>Audience simulator</small></div></div><span id="connection-badge" class="online-badge">模擬連線中</span></div>
+            <div class="chat-card-head"><div><span class="chat-icon">#</span><div><b>Audience simulator</b><small>Test without a live chat</small></div></div><span id="connection-badge" class="online-badge">Simulated connection</span></div>
             <div class="card-rule"></div>
-            <div class="card-label"><span>選擇攻擊格</span><small>QUICK THROW</small></div>
-            <p class="card-description">選擇一個數字，讓角色在警報後閃開。</p>
-            <div id="throw-grid" class="throw-grid" aria-label="模擬觀眾投擲"><button type="button" data-throw="1">1</button><button type="button" data-throw="2">2</button><button type="button" data-throw="3">3</button><button type="button" data-throw="4">4</button><button type="button" data-throw="5">5</button><button type="button" data-throw="6">6</button><button type="button" data-throw="7">7</button><button type="button" data-throw="8">8</button><button type="button" data-throw="9">9</button></div>
+            <div class="card-label"><span>Pick a target cell</span><small>QUICK THROW</small></div>
+            <p class="card-description">Choose a number, then dodge after the warning.</p>
+            <div id="throw-grid" class="throw-grid" aria-label="Simulated viewer throw"><button type="button" data-throw="1">1</button><button type="button" data-throw="2">2</button><button type="button" data-throw="3">3</button><button type="button" data-throw="4">4</button><button type="button" data-throw="5">5</button><button type="button" data-throw="6">6</button><button type="button" data-throw="7">7</button><button type="button" data-throw="8">8</button><button type="button" data-throw="9">9</button></div>
             <div class="command-or"><span></span> OR TYPE A COMMAND <span></span></div>
-            <form id="chat-form" class="chat-form"><label for="chat-input" class="sr-only">輸入合成聊天室指令</label><span>›</span><input id="chat-input" maxlength="100" placeholder="!throw 5" autocomplete="off"><button type="submit" aria-label="送出模擬指令">↗</button></form>
-            <p id="command-feedback" class="command-feedback" role="status">可輸入 !throw 1–9、!freeze、!mosquito、!lava</p>
-            <div class="mini-actions"><button id="synthetic-cross" type="button">✳ 烈焰大十字（合成）</button></div>
-            <p class="card-description">1.5 秒後攻擊十字五格；移到四角 1、3、7、9。每次命中扣 15 血，閃躲加 25 分。</p>
-            <div class="challenge-controls" aria-label="合成遊戲與關節控制">
-              <div class="card-label"><span>更多遊戲</span><small>SYNTHETIC ARCADE</small></div>
-              <div class="mini-actions"><button id="synthetic-freeze" type="button">定格挑戰</button><button id="synthetic-mosquito" type="button">拍蚊子</button><button id="synthetic-lava" type="button">熔岩／加高水位</button></div>
-              <p id="challenge-status" class="command-feedback" role="status">選擇遊戲開始；同時只進行一種挑戰。</p>
-              <label>手肘展開 <input id="elbow-spread" type="range" min="0" max="35" value="10" step="1"> <output id="elbow-value">10%</output></label>
-              <label>點擊／拖曳遊戲場控制 <select id="pointer-control"><option value="body">身體位置</option><option value="leftWrist">左手腕（藍）</option><option value="rightWrist">右手腕（粉）</option></select></label>
-              <div class="mini-actions"><button id="synthetic-clap" type="button">合掌到兩腕中點</button><button id="hip-stand" type="button">站起（髖部上移）</button><button id="hip-crouch" type="button">蹲下（髖部下移）</button></div>
-              <div class="joint-toggles"><label><input id="elbow-known" type="checkbox" checked> 手肘可見</label><label><input id="wrist-known" type="checkbox" checked> 手腕可見</label><label><input id="hip-known" type="checkbox" checked> 髖部可見</label></div>
-              <p class="card-description">定格：黃燈 1.5 秒內收肘，紅燈保持 2.5 秒；成功 +100，失敗 −12。拍蚊子：選手腕後快速拖向蚊子，或在蚊子處合掌；10 秒內拍中 +50，逾時 −5。熔岩：8 秒內抬高髖部避開水位，連續浸入每秒 −5，無受傷完成 +75。這些是合成座標操作。</p>
-            </div>
-            <div class="mini-actions"><button id="pause" type="button">Ⅱ 暫停遊戲</button><button id="tracking" type="button">◎ 模擬失追</button><button id="connection" type="button">↯ 模擬斷線</button></div>
-            <div class="mini-actions"><button id="frame-source-toggle" type="button">模擬影格中斷</button></div><p id="frame-source-status" class="command-feedback" role="status">合成影格更新中</p>
-            <details class="provider-settings"><summary>鏡頭區域校準（合成）</summary>
-              <p>數值為畫面百分比；使用模擬位置，不會開啟攝影機。設定套用後正在等待的攻擊會取消。</p>
-              <form id="calibration-form" novalidate>
-                <div class="calibration-grid">
-                  <label>左 X % <input id="cal-x" type="number" min="0" max="100" step="0.1" value="0" required></label>
-                  <label>上 Y % <input id="cal-y" type="number" min="0" max="100" step="0.1" value="0" required></label>
-                  <label>寬 % <input id="cal-width" type="number" min="0.1" max="100" step="0.1" value="100" required></label>
-                  <label>高 % <input id="cal-height" type="number" min="0.1" max="100" step="0.1" value="100" required></label>
-                  <label>裁切左 % <input id="crop-left" type="number" min="0" max="99" step="0.1" value="0" required></label>
-                  <label>裁切右 % <input id="crop-right" type="number" min="0" max="99" step="0.1" value="0" required></label>
-                  <label>裁切上 % <input id="crop-top" type="number" min="0" max="99" step="0.1" value="0" required></label>
-                  <label>裁切下 % <input id="crop-bottom" type="number" min="0" max="99" step="0.1" value="0" required></label>
-                  <label>鏡頭比例 <select id="cal-aspect"><option value="16:9">16:9</option><option value="4:3">4:3</option></select></label>
-                  <label>縮放 <select id="cal-fit"><option value="contain">完整顯示</option><option value="cover">填滿並裁切</option></select></label>
-                  <label>旋轉 <select id="cal-rotation"><option value="0">0°</option><option value="90">90°</option><option value="180">180°</option><option value="270">270°</option></select></label>
-                  <label class="calibration-check"><input id="cal-mirror" type="checkbox"> 左右鏡像</label>
-                </div>
-                <button type="submit">套用校準</button>
-              </form><p id="calibration-status" role="status">目前：全畫面合成鏡頭</p><div class="mini-actions"><button id="overlay-toggle" type="button">啟用本機合成疊圖同步</button></div><p><a id="overlay-link" target="_blank" rel="noopener">開啟透明合成疊圖</a></p><p id="overlay-hint">啟用後保持此控制頁開啟；僅同步合成資料。</p>
-            </details>
-            <p class="command-feedback">官方 CLI 本機 mock 使用替代事件訂閱；聊天室事件須由合成注入器提供。</p>
-            <div class="mini-actions"><button id="mock-toggle" type="button">連接本機 CLI mock</button></div>
-            <div class="mini-actions"><button id="auth-mock-toggle" type="button">啟動本機聊天室授權測試</button></div>
-            <details class="provider-settings"><summary>Twitch provider 設定</summary>
-              <p>設定暫存在此頁；正式連線目前鎖定。</p>
+            <form id="chat-form" class="chat-form"><label for="chat-input" class="sr-only">Enter a simulated chat command</label><span>›</span><input id="chat-input" maxlength="100" placeholder="!throw 5" autocomplete="off"><button type="submit" aria-label="Send simulated command">↗</button></form>
+            <p id="command-feedback" class="command-feedback" role="status">Try !throw 1–9, !freeze, !mosquito or !lava</p>
+            <div class="card-label"><span>Games</span><small>ONE AT A TIME</small></div>
+            <div class="mini-actions"><button id="synthetic-cross" type="button">✳ Cross Inferno</button><button id="synthetic-freeze" type="button">Freeze</button><button id="synthetic-mosquito" type="button">Mosquito</button><button id="synthetic-lava" type="button">Lava</button></div>
+            <p id="challenge-status" class="command-feedback" role="status">Pick a game to start; one challenge at a time.</p>
+            <p class="card-description">Cross Inferno: after 1.5 s the cross cells are hit; move to a corner (1, 3, 7, 9). A hit costs 15 HP, a dodge scores 25.</p>
+            <div class="mini-actions"><button id="pause" type="button">Ⅱ Pause game</button></div>
+
+            <details class="provider-settings" open><summary>Connect to Twitch</summary>
+              <p>Enter your own Twitch application details. They stay in this page's memory only. Register <code>http://127.0.0.1:4173/oauth-callback.html</code> as the OAuth redirect URL.</p>
               <form id="provider-form">
                 <label>Client ID <input id="provider-client-id" maxlength="128" autocomplete="off" required></label>
-                <label>頻道 ID（數字）<input id="provider-channel-id" inputmode="numeric" maxlength="20" autocomplete="off" required></label>
-                <label>回呼網址 <input id="provider-callback" type="url" maxlength="512" value="http://127.0.0.1:4173/oauth-callback.html" required></label>
-                <button type="submit">驗證設定</button>
-              </form><p id="provider-feedback" role="status">尚未驗證設定</p>
-              <p>在 Twitch 開發者後台的 OAuth Redirect URLs 登記相同回呼網址。是否接受此本機網址仍需日後實際核對。</p>
-              <div class="provider-actions"><button id="provider-live" type="button" disabled>正式授權並訂閱（尚未開放）</button><button id="provider-local" type="button">以本機模擬測試授權</button></div>
-              <p id="provider-status" role="status">正式 Twitch 連線已鎖定；模擬測試使用固定的假設定。</p>
+                <label>Broadcaster channel ID (numeric) <input id="provider-channel-id" inputmode="numeric" maxlength="20" autocomplete="off" required></label>
+                <label>Callback URL <input id="provider-callback" type="url" maxlength="512" value="http://127.0.0.1:4173/oauth-callback.html" required></label>
+                <button type="submit">Validate settings</button>
+              </form><p id="provider-feedback" role="status">Settings not validated yet</p>
+              <div class="provider-actions"><button id="provider-live" type="button" disabled>Authorize and subscribe</button><button id="provider-local" type="button">Test with local simulator</button></div>
+              <p id="provider-status" role="status">Not connected. The local simulator uses fixed fake settings.</p>
+            </details>
+
+            <details class="provider-settings" id="advanced"><summary>Advanced test controls</summary>
+              <div class="challenge-controls" aria-label="Synthetic joint controls">
+                <label>Elbow spread <input id="elbow-spread" type="range" min="0" max="35" value="10" step="1"> <output id="elbow-value">10%</output></label>
+                <label>Click / drag in the arena controls <select id="pointer-control"><option value="body">Body position</option><option value="leftWrist">Left wrist (blue)</option><option value="rightWrist">Right wrist (pink)</option></select></label>
+                <div class="mini-actions"><button id="synthetic-clap" type="button">Clap to wrist midpoint</button><button id="hip-stand" type="button">Stand (hip up)</button><button id="hip-crouch" type="button">Crouch (hip down)</button></div>
+                <div class="joint-toggles"><label><input id="elbow-known" type="checkbox" checked> Elbow visible</label><label><input id="wrist-known" type="checkbox" checked> Wrist visible</label><label><input id="hip-known" type="checkbox" checked> Hip visible</label></div>
+                <p class="card-description">Freeze: pull in your elbows during the 1.5 s yellow, hold through the 2.5 s red; success +100, failure −12. Mosquito: select a wrist, then drag fast onto the mosquito or clap on it; +50 within 10 s, −5 on timeout. Lava: raise the hip within 8 s to stay above the surface; burns cost 5 HP per second, a clean finish +75. These are synthetic coordinate controls.</p>
+              </div>
+              <div class="mini-actions"><button id="tracking" type="button">◎ Simulate tracking loss</button><button id="connection" type="button">↯ Simulate disconnect</button></div>
+              <div class="mini-actions"><button id="frame-source-toggle" type="button">Simulate frame interruption</button></div><p id="frame-source-status" class="command-feedback" role="status">Synthetic frames updating</p>
+              <details class="provider-settings"><summary>Camera region calibration (synthetic)</summary>
+                <p>Values are percentages of the frame. Uses a simulated position and never opens a camera. Applying cancels any pending attacks.</p>
+                <form id="calibration-form" novalidate>
+                  <div class="calibration-grid">
+                    <label>Left X % <input id="cal-x" type="number" min="0" max="100" step="0.1" value="0" required></label>
+                    <label>Top Y % <input id="cal-y" type="number" min="0" max="100" step="0.1" value="0" required></label>
+                    <label>Width % <input id="cal-width" type="number" min="0.1" max="100" step="0.1" value="100" required></label>
+                    <label>Height % <input id="cal-height" type="number" min="0.1" max="100" step="0.1" value="100" required></label>
+                    <label>Crop left % <input id="crop-left" type="number" min="0" max="99" step="0.1" value="0" required></label>
+                    <label>Crop right % <input id="crop-right" type="number" min="0" max="99" step="0.1" value="0" required></label>
+                    <label>Crop top % <input id="crop-top" type="number" min="0" max="99" step="0.1" value="0" required></label>
+                    <label>Crop bottom % <input id="crop-bottom" type="number" min="0" max="99" step="0.1" value="0" required></label>
+                    <label>Camera aspect <select id="cal-aspect"><option value="16:9">16:9</option><option value="4:3">4:3</option></select></label>
+                    <label>Fit <select id="cal-fit"><option value="contain">Show all</option><option value="cover">Fill and crop</option></select></label>
+                    <label>Rotation <select id="cal-rotation"><option value="0">0°</option><option value="90">90°</option><option value="180">180°</option><option value="270">270°</option></select></label>
+                    <label class="calibration-check"><input id="cal-mirror" type="checkbox"> Mirror</label>
+                  </div>
+                  <button type="submit">Apply calibration</button>
+                </form><p id="calibration-status" role="status">Current: full-frame synthetic camera</p>
+              </details>
+              <p class="command-feedback">The official CLI mock uses a substitute subscription; chat events must come from the synthetic injector.</p>
+              <div class="mini-actions"><button id="mock-toggle" type="button">Connect local CLI mock</button></div>
+              <div class="mini-actions"><button id="auth-mock-toggle" type="button">Start local chat auth test</button></div>
+            </details>
+
+            <details class="provider-settings" open><summary>OBS overlay</summary>
+              <div class="mini-actions"><button id="overlay-toggle" type="button">Enable overlay sync</button></div><p><a id="overlay-link" target="_blank" rel="noopener">Open transparent overlay</a></p><p id="overlay-hint">Add the overlay link as an OBS Browser Source. Keep this controller page open while syncing.</p>
             </details>
           </div>
-          <div class="activity-card"><div class="activity-head"><span>LIVE ACTIVITY <small>/ 活動紀錄</small></span><i></i></div><ol id="activity" aria-live="polite"><li><span class="feed-dot"></span><div><b>模擬聊天室已準備</b><small>等待第一個指令</small></div><time>NOW</time></li></ol></div>
-          <div class="no-network"><span>✦</span><p><b>放心練習。</b> 此頁僅使用本機合成資料，沒有開啟攝影機或真實聊天室。</p></div>
+          <div class="activity-card"><div class="activity-head"><span>LIVE ACTIVITY</span><i></i></div><ol id="activity" aria-live="polite"><li><span class="feed-dot"></span><div><b>Simulated chat ready</b><small>Waiting for the first command</small></div><time>NOW</time></li></ol></div>
+          <div class="no-network"><span>✦</span><p><b>Safe to practice.</b> Until you connect to Twitch above, this page uses local synthetic data only: no camera and no real chat.</p></div>
         </aside>
       </section>
 
-      <section class="how-to" id="how-to"><div class="how-title"><span class="section-index">03 / THE RULES</span><h2>準備好開玩？</h2><p>給聊天室一個按鈕，<br>給主播 0.5 秒反應時間。</p></div><div class="how-step"><span>01</span><b>聊天室出招</b><p>輸入 <code>!throw 1</code> 到 <code>!throw 9</code>，指定目標格。</p></div><div class="how-step"><span>02</span><b>閃過紅色警報</b><p>點擊畫面或用方向鍵，把角色移到其他格子。</p></div><div class="how-step"><span>03</span><b>撐過下一回合</b><p>躲過得分，被擊中扣血。按重新開始再玩一次。</p></div></section>
+      <section class="how-to" id="how-to"><div class="how-title"><span class="section-index">03 / THE RULES</span><h2>Ready to play?</h2><p>Give chat a button.<br>Give the streamer half a second.</p></div><div class="how-step"><span>01</span><b>Chat attacks</b><p>Type <code>!throw 1</code> to <code>!throw 9</code> to pick the target cell.</p></div><div class="how-step"><span>02</span><b>Dodge the red warning</b><p>Click the arena or use the arrow keys to move to another cell.</p></div><div class="how-step"><span>03</span><b>Survive the round</b><p>Dodges score, hits cost HP. Press Restart to play again.</p></div></section>
     </main>
-    <footer><span>STREAMER MAYHEM <b>✦</b> MATRIX DODGE</span><span>LOCAL SIMULATION · NO LIVE CONNECTION</span><a href="#top">BACK TO TOP ↑</a></footer>
+    <footer><span>STREAMER MAYHEM <b>✦</b> MATRIX DODGE</span><span>SIMULATION MODE · LIVE TWITCH OPTIONAL</span><a href="#top">BACK TO TOP ↑</a></footer>
   </div>
   <script type="module" src="./app.mjs"></script>
 </body>
