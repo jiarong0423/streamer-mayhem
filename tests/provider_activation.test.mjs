@@ -9,9 +9,10 @@ function fixture(mode='local',complete=async()=>{}) {
   const event={origin:'http://127.0.0.1:4173',source:popup,data:{type:'streamer-mayhem-local-oauth',fragment:'#test',query:''}};
   return {provider,activation,events,popup,event,opened:()=>opened};
 }
-test('default idle and live lock do not open a popup or subscribe',()=>{
-  const f=fixture('live');assert.equal(f.opened(),0);assert.equal(f.activation.start(),false);
-  assert.equal(f.opened(),0);assert.equal(f.provider.starts,0);assert.deepEqual(f.events,['LIVE_LOCKED']);f.activation.stop();
+test('default idle; live mode opens a popup only on explicit start and never subscribes before a validated callback',()=>{
+  const f=fixture('live');assert.equal(f.opened(),0);assert.equal(f.provider.starts,0);
+  assert.equal(f.activation.start(),true);assert.equal(f.opened(),1);assert.equal(f.provider.starts,0);
+  assert.equal(f.events.includes('LIVE_LOCKED'),false);f.activation.stop();
 });
 test('local activation subscribes only after validated callback and stops',async()=>{
   const f=fixture();assert.equal(f.activation.start(),true);assert.equal(f.provider.starts,0);assert.equal(f.activation.start(),false);

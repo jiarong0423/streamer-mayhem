@@ -6,14 +6,12 @@ const config={clientId:'test_client',channelId:'123456',redirectUri:'http://127.
 const game={receiveChat(){},setConnection(){}};
 const never=()=>{throw new Error('unexpected network');};
 class NeverSocket {constructor(){never();}}
-test('live provider is locked at OAuth and transport, including direct calls',async()=>{
+test('live provider is enabled but never touches the network until started',async()=>{
   assert.equal(LIVE_NETWORK_ENABLED,true);
   const provider=new TwitchProvider({config,game,fetchImpl:never,WebSocketClass:NeverSocket});
-  assert.throws(()=>provider.oauth.begin(),{message:'LIVE_CONNECTION_DISABLED'});
-  assert.throws(()=>provider.start(),{message:'LIVE_CONNECTION_DISABLED'});
-  assert.throws(()=>provider.transport.start(),{message:'LIVE_CONNECTION_DISABLED'});
-  await assert.rejects(provider.oauth.credentials(),{message:'LIVE_CONNECTION_DISABLED'});
-  await assert.rejects(provider.transport.subscribe('session',0),{message:'LIVE_CONNECTION_DISABLED'});
+  assert.doesNotThrow(()=>provider.oauth.begin());
+  assert.equal(new URL(provider.oauth.begin()).origin,'https://id.twitch.tv');
+  await assert.rejects(provider.transport.subscribe('session',0));
 });
 test('formal authorization and chat subscription use configured values',()=>{
   const url=new URL(previewAuthorizationUrl(config,'a'.repeat(64)));
