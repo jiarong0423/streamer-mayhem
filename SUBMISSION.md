@@ -19,7 +19,8 @@ Limits, stated plainly: body tracking in this repository is driven by synthetic 
 Codex was the main developer. In Codex sessions we designed the shared rules core, wrote the EventSub adapter and OAuth flow, defined the versioned overlay protocol, and wrote the Node test suite. Independent review of each stage was done by a separate reviewer against frozen file hashes, and Codex fixed the issues it raised (for example a tie between tracking loss and an attack deadline that wrongly counted a HIT).
 
 ## Codex session ID
-`<<FILL IN: run /status in the main Codex thread that built this project>>`
+Official wording: the thread where most of the project was built (type `/status` in Codex).
+`<<FILL IN: session ID of the main Codex thread>>`
 
 ## Repository
 `<<FILL IN: repository URL>>` (if private on GitHub or GitLab, share with testing@devpost.com)
