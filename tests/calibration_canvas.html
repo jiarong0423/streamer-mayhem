@@ -1,0 +1,18 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Camera calibration synthetic test</title></head>
+<body style="background:#191919;color:white;font:16px sans-serif"><h1>Camera calibration synthetic canvas</h1><p id="result">RUNNING</p><canvas id="canvas" width="640" height="360"></canvas>
+<script type="module">
+import {createCameraGeometry,canvasPointToSource,projectCameraPoint} from '../dist/camera_geometry.mjs';
+import {drawCameraOverlay} from '../dist/matrix_view.mjs';
+import {gridCell} from '../dist/matrix.mjs';
+const c=document.querySelector('#canvas'),ctx=c.getContext('2d',{willReadFrequently:true}),out=document.querySelector('#result');
+try {
+  const g=createCameraGeometry({canvasWidth:640,canvasHeight:360,viewport:{x:80,y:40,width:320,height:240},sourceWidth:1280,sourceHeight:720,mirror:true});
+  const result=drawCameraOverlay(ctx,g,{mode:'PLAYING',attacks:[{cell:5}]});
+  const pixel=(x,y)=>[...ctx.getImageData(x,y,1,1).data];const outside=pixel(20,20),letterbox=pixel(100,45),hit=pixel(200,150),safe=pixel(100,100);
+  const source=canvasPointToSource({x:100,y:100},g),mapped=projectCameraPoint({...source,visibility:1},g);
+  const checks=[g.visible.y===70,g.visible.height===180,outside[3]===0,letterbox[3]===0,hit[0]>100&&hit[3]>0,safe[3]===0,gridCell(mapped)===1,source.x>.5,result.cells.length===9];
+  drawCameraOverlay(ctx,g,{mode:'TRACKING_LOST',attacks:[]});checks.push(pixel(20,20)[3]===0,pixel(100,240)[3]>0);
+  if(checks.some(x=>!x))throw new Error(`checks: ${checks.join(',')}`);
+  out.textContent=`CALIBRATION CANVAS PASS — ${checks.length}/${checks.length}; synthetic only`;
+} catch(error){out.textContent=`CALIBRATION CANVAS FAIL — ${error.message}`;}
+</script></body></html>

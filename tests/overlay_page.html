@@ -1,0 +1,42 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Standalone overlay synthetic test</title></head><body>
+<h1>Standalone overlay synthetic test</h1><p id="result">RUNNING</p>
+<iframe id="plain" title="disabled overlay" width="640" height="360" src="/overlay.html" style="border:0"></iframe>
+<iframe id="active" title="synthetic overlay" width="640" height="360" src="/overlay.html?mode=synthetic&amp;session=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" style="border:0"></iframe>
+<script type="module">
+import {createCameraGeometry,canvasPointToSource,visiblePointToCanvas,projectCameraPoint} from '/camera_geometry.mjs';
+import {gridCell} from '/matrix.mjs';
+import {OVERLAY_STATE_TYPE,OVERLAY_CLOSED_TYPE} from '/overlay_protocol.mjs';
+const result=document.querySelector('#result'),plain=document.querySelector('#plain'),frame=document.querySelector('#active');
+const session='a'.repeat(32),sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const send=async(message,expected=204)=>{const r=await fetch('/__overlay/state',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(message)});if(r.status!==expected)throw Error(`relay ${r.status}`);};
+const wait=async(fn)=>{for(let i=0;i<150;i++){if(fn())return;await sleep(25);}throw Error('timeout');};
+const canvas=f=>f.contentDocument.querySelector('canvas'),pixel=(f,x,y)=>[...canvas(f).getContext('2d').getImageData(x,y,1,1).data];
+try {
+  await wait(()=>canvas(plain)?.dataset.status && canvas(frame)?.dataset.status);
+  const checks=[canvas(plain).dataset.status==='合成疊圖未啟用',pixel(plain,20,20)[3]===0,pixel(frame,20,20)[3]===0];
+  const scene={viewport:{x:.125,y:40/360,width:.5,height:240/360},sourceWidth:1280,sourceHeight:720,crop:{left:0,top:0,right:0,bottom:0},fit:'contain',mirror:true,rotation:0};
+  const geometry=createCameraGeometry({canvasWidth:640,canvasHeight:360,viewport:{x:80,y:40,width:320,height:240},...scene,viewport:{x:80,y:40,width:320,height:240}});
+  const p=canvasPointToSource(visiblePointToCanvas({x:1/6,y:1/6},geometry),geometry);
+  const base={type:OVERLAY_STATE_TYPE,session,sequence:1,scene,snapshot:{mode:'PLAYING',attacks:[{cell:5}]},sourcePoint:{...p,visibility:1}};
+  await send({...base,type:'synthetic-state',version:2,sequence:999999},400);checks.push(pixel(frame,20,20)[3]===0);
+  await send(base);await wait(()=>canvas(frame).dataset.cell==='1');
+  checks.push(canvas(frame).dataset.status==='合成疊圖 PLAYING',pixel(frame,20,20)[3]===0,pixel(frame,100,45)[3]===0,pixel(frame,240,160)[3]>0,p.x>.5);
+  const changed={...scene,fit:'cover',rotation:90,crop:{left:.1,top:.1,right:.2,bottom:.1}};
+  const nextGeometry=createCameraGeometry({...changed,canvasWidth:640,canvasHeight:360,viewport:{x:80,y:40,width:320,height:240}});
+  const nextPoint=canvasPointToSource(visiblePointToCanvas({x:5/6,y:5/6},nextGeometry),nextGeometry);
+  await send({...base,sequence:2,scene:changed,sourcePoint:{...nextPoint,visibility:1}});await wait(()=>canvas(frame).dataset.cell==='9');checks.push(gridCell(projectCameraPoint({...nextPoint,visibility:1},nextGeometry))===9);
+  frame.width='320';frame.height='180';await wait(()=>canvas(frame).width===320 && canvas(frame).height===180 && canvas(frame).dataset.cell==='9');checks.push(pixel(frame,10,10)[3]===0);
+  await send({...base,sequence:3,sourcePoint:{x:.5,y:.5,visibility:.1}});await wait(()=>canvas(frame).dataset.status==='合成追蹤失效');checks.push(canvas(frame).dataset.cell==='',pixel(frame,120,80)[3]===0);
+  await send({...base,sequence:4,snapshot:{mode:'TRACKING_LOST',attacks:[{cell:5}]}});await wait(()=>canvas(frame).dataset.status==='合成追蹤失效');checks.push(canvas(frame).dataset.cell==='');
+  await send({...base,sequence:2},409);await sleep(100);checks.push(canvas(frame).dataset.status==='合成追蹤失效');
+  await send({...base,sequence:5,scene:{...scene,viewport:{x:1,y:0,width:1,height:1}}},400);checks.push(canvas(frame).dataset.status==='合成追蹤失效');
+  await send({...base,sequence:6});await wait(()=>canvas(frame).dataset.cell==='1');await wait(()=>canvas(frame).dataset.status==='合成控制頁已離線');checks.push(pixel(frame,120,80)[3]===0);
+  await send({...base,sequence:7});await wait(()=>canvas(frame).dataset.cell==='1');
+  const smallGeometry=createCameraGeometry({...scene,canvasWidth:320,canvasHeight:180,viewport:{x:40,y:20,width:160,height:120}});
+  const sample=cell=>{const r=smallGeometry.visible,x=r.x+(((cell-1)%3)+.7)*r.width/3,y=r.y+(Math.floor((cell-1)/3)+.65)*r.height/3;return pixel(frame,Math.floor(x),Math.floor(y))[3];};
+  await send({...base,sequence:8,snapshot:{mode:'PLAYING',attacks:[{cell:5,cells:[2,4,5,6,8]}]}});await wait(()=>sample(2)>0);
+  checks.push([2,4,5,6,8].every(cell=>sample(cell)>0),[1,3,7,9].every(cell=>sample(cell)===0));
+  await send({type:OVERLAY_CLOSED_TYPE,session,sequence:9});await wait(()=>canvas(frame).dataset.status==='合成控制頁已關閉');checks.push(pixel(frame,120,80)[3]===0);
+  if(checks.some(c=>!c))throw Error(checks.join(','));result.textContent=`OVERLAY PAGE PASS — ${checks.length}/${checks.length}; synthetic only`;
+}catch(error){result.textContent=`OVERLAY PAGE FAIL — ${error.message}`;}
+</script></body></html>

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Matrix synthetic canvas check</title></head>
+<body style="background:#191919;color:white;font:16px sans-serif">
+  <h1>Matrix synthetic canvas check</h1>
+  <p id="result">RUNNING</p>
+  <canvas id="canvas" width="1024" height="768" style="width:768px;max-width:100%;background:#000"></canvas>
+  <script type="module">
+    import { drawMatrix } from '../dist/matrix_view.mjs';
+    const canvas=document.getElementById('canvas'), ctx=canvas.getContext('2d',{willReadFrequently:true});
+    const snapshot={mode:'PLAYING',connection:'ONLINE',hp:100,score:0,recoveryRemaining:0,
+      attacks:[{cell:5}],lastResult:null};
+    const outcome=document.getElementById('result');
+    try {
+      ctx.fillStyle='black';ctx.fillRect(0,0,canvas.width,canvas.height);
+      const view=drawMatrix(ctx,snapshot,{viewWidth:1024,viewHeight:768,sourceWidth:1280,sourceHeight:720,nose:{x:.5,y:.5}});
+      const pixel=(x,y)=>[...ctx.getImageData(x,y,1,1).data];
+      const top=pixel(10,10), active=pixel(400,300), inactive=pixel(100,200), nose=pixel(512,384);
+      const checks=[view.rect.y===96,view.rect.height===576,top[0]===0,active[0]>40 && active[0]>active[1],
+        inactive[0]===0,nose[1]>200 && nose[2]>200,view.labels.includes('SIMULATED')];
+      if(checks.some(value=>!value)) throw new Error(`Pixel checks failed: ${checks.join(',')}`);
+      outcome.textContent='REAL CANVAS PASS — 7/7 pixel and geometry checks; synthetic only';
+    } catch(error) { outcome.textContent=`REAL CANVAS FAIL — ${error.message}`; }
+  </script>
+</body></html>
