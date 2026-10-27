@@ -54,11 +54,11 @@
             <div class="mini-actions"><button id="pause" type="button">Ⅱ Pause game</button></div>
 
             <details class="provider-settings" open><summary>Connect to Twitch</summary>
-              <p>Enter your own Twitch application details. They stay in this page's memory only. Register <code>http://127.0.0.1:4173/oauth-callback.html</code> as the OAuth redirect URL.</p>
+              <p>Enter your own Twitch application details. They stay in this page's memory only. Register <code>http://localhost:4173/oauth-callback.html</code> as the OAuth redirect URL (Twitch accepts http only for localhost) and open this page at <code>http://localhost:4173/</code>.</p>
               <form id="provider-form">
                 <label>Client ID <input id="provider-client-id" maxlength="128" autocomplete="off" required></label>
                 <label>Broadcaster channel ID (numeric) <input id="provider-channel-id" inputmode="numeric" maxlength="20" autocomplete="off" required></label>
-                <label>Callback URL <input id="provider-callback" type="url" maxlength="512" value="http://127.0.0.1:4173/oauth-callback.html" required></label>
+                <label>Callback URL <input id="provider-callback" type="url" maxlength="512" value="http://localhost:4173/oauth-callback.html" required></label>
                 <button type="submit">Validate settings</button>
               </form><p id="provider-feedback" role="status">Settings not validated yet</p>
               <div class="provider-actions"><button id="provider-live" type="button" disabled>Authorize and subscribe</button><button id="provider-local" type="button">Test with local simulator</button></div>

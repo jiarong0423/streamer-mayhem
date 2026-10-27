@@ -12,7 +12,7 @@ export function validateProviderConfig(config,{local=false}={}) {
   if(!config || typeof config.clientId!=='string' || !/^[A-Za-z0-9_-]{1,128}$/.test(config.clientId))throw new Error('INVALID_CLIENT_ID');
   if(typeof config.channelId!=='string' || !(local?config.channelId==='synthetic-channel':/^[0-9]{1,20}$/.test(config.channelId)))throw new Error('INVALID_CHANNEL_ID');
   let callback;try{callback=new URL(config.redirectUri);}catch{throw new Error('INVALID_CALLBACK');}
-  if(callback.origin!=='http://127.0.0.1:4173' || callback.username || callback.password || callback.search || callback.hash || !/^\/(?:[A-Za-z0-9_-]+\/)*oauth-callback\.html$/.test(callback.pathname))throw new Error('INVALID_CALLBACK');
+  if(!['http://127.0.0.1:4173','http://localhost:4173'].includes(callback.origin) || callback.username || callback.password || callback.search || callback.hash || !/^\/(?:[A-Za-z0-9_-]+\/)*oauth-callback\.html$/.test(callback.pathname))throw new Error('INVALID_CALLBACK');
   if(local && (config.clientId!==LOCAL_CONFIG.clientId || callback.href!==LOCAL_CONFIG.redirectUri))throw new Error('INVALID_LOCAL_CONFIG');
   return Object.freeze({clientId:config.clientId,channelId:config.channelId,redirectUri:callback.href});
 }

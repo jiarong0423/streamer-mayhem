@@ -1,6 +1,6 @@
 const fragment=location.hash,query=location.search;
 history.replaceState(null,'',location.pathname);
-if(window.opener && location.origin==='http://127.0.0.1:4173') {
+if(window.opener && ['http://127.0.0.1:4173','http://localhost:4173'].includes(location.origin)) {
   const opener=window.opener;
   window.addEventListener('message',event=>{
     if(event.origin===location.origin && event.source===opener && event.data?.type==='streamer-mayhem-local-oauth-ack')window.close();

@@ -49,7 +49,7 @@ const chatTransport=new MockEventSubTransport({adapter,oauth,profile:'chat',onSt
   if(chatMode)$('#connection-badge').textContent=labels[status]??status;
   if(detail==='AUTH_REQUIRED')feed('Simulated authorization expired','Stop and re-authorize');
 },onDelivery:result=>{if(result.accepted)feed('Local chat attack',`!throw ${result.cell} · 0.5 s warning`);}});
-const popupController=location.origin==='http://127.0.0.1:4173'?new AuthPopupController({oauth,origin:location.origin,
+const popupController=['http://127.0.0.1:4173','http://localhost:4173'].includes(location.origin)?new AuthPopupController({oauth,origin:location.origin,
   openWindow:url=>window.open(url,'streamer-mayhem-local-auth','popup,width=520,height=420'),
   onState:state=>{
     if(state==='PENDING'){$('#mock-toggle').disabled=true;$('#auth-mock-toggle').textContent='Cancel local authorization';syncProviderControls();}
@@ -204,9 +204,10 @@ $('#provider-form').addEventListener('submit',event=>{
   event.preventDefault();configuredProvider=null;
   try {
     configuredProvider=validateProviderConfig({clientId:$('#provider-client-id').value.trim(),channelId:$('#provider-channel-id').value.trim(),redirectUri:$('#provider-callback').value.trim()});
+    if(new URL($('#provider-callback').value.trim()).origin!==location.origin)throw new Error('INVALID_CALLBACK');
     $('#provider-feedback').textContent='Settings validated; ready to authorize.';
   } catch(error) {
-    const errors={INVALID_CLIENT_ID:'Invalid Client ID format',INVALID_CHANNEL_ID:'Channel ID must be numeric',INVALID_CALLBACK:'Callback URL must be http://127.0.0.1:4173/oauth-callback.html or a same-origin path ending in it'};
+    const errors={INVALID_CLIENT_ID:'Invalid Client ID format',INVALID_CHANNEL_ID:'Channel ID must be numeric',INVALID_CALLBACK:'Callback URL must be http://localhost:4173/oauth-callback.html (or 127.0.0.1) or a same-origin path ending in it'};
     $('#provider-feedback').textContent=errors[error.message]??'Settings unusable';
   }
   syncProviderControls();
@@ -233,7 +234,7 @@ function finishProvider(message){
 function startProvider(mode){
   if(providerActivation||mockMode||chatMode||popupController?.pending)return;
   if(mode==='live'&&(!LIVE_NETWORK_ENABLED||!configuredProvider)){$('#provider-status').textContent='Live connection unavailable or settings not validated.';return;}
-  if(location.origin!=='http://127.0.0.1:4173'){$('#provider-status').textContent='Open this page at 127.0.0.1:4173.';return;}
+  if(!['http://127.0.0.1:4173','http://localhost:4173'].includes(location.origin)){$('#provider-status').textContent='Open this page at localhost:4173 or 127.0.0.1:4173.';return;}
   const prefix=mode==='local'?'Local simulation':'Twitch';
   const provider=new TwitchProvider({mode,game,config:mode==='local'?LOCAL_CONFIG:configuredProvider,
     onStatus:(status,detail)=>{
@@ -293,7 +294,7 @@ $('#mock-toggle').addEventListener('click',()=>{
 });
 $('#auth-mock-toggle').addEventListener('click',()=>{
   if(chatMode){chatTransport.stop();oauth.clear();chatMode=false;syncProviderControls();$('#connection').disabled=false;$('#mock-toggle').disabled=false;$('#auth-mock-toggle').textContent='Start local chat auth test';adapter.ingest(syntheticWelcome());return;}
-  if(!popupController){feed('Local authorization cannot start','Open the game at 127.0.0.1:4173');return;}
+  if(!popupController){feed('Local authorization cannot start','Open the game at localhost:4173 or 127.0.0.1:4173');return;}
   if(popupController.pending)popupController.cancel();else popupController.start();
 });
 window.addEventListener('message',event=>{popupController?.handleMessage(event);providerActivation?.handleMessage(event);});

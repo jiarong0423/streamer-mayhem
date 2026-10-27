@@ -2,7 +2,7 @@
 export class AuthPopupController {
   constructor({oauth,origin,openWindow,onState=()=>{},onSuccess=()=>{},setIntervalImpl=setInterval,clearIntervalImpl=clearInterval}={}) {
     if(typeof oauth?.begin!=='function'||typeof oauth?.complete!=='function'||typeof oauth?.clear!=='function'||typeof openWindow!=='function')throw new TypeError('popup dependencies required');
-    if(origin!=='http://127.0.0.1:4173')throw new TypeError('local origin required');
+    if(!['http://127.0.0.1:4173','http://localhost:4173'].includes(origin))throw new TypeError('local origin required');
     this.oauth=oauth;this.origin=origin;this.openWindow=openWindow;this.onState=onState;this.onSuccess=onSuccess;
     this.setInterval=(...args)=>setIntervalImpl(...args);this.clearInterval=(...args)=>clearIntervalImpl(...args);
     this.pending=false;this.phase='IDLE';this.popup=null;this.timer=null;this.generation=0;
