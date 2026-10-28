@@ -14,3 +14,5 @@ These files are unmodified copies of Google's MediaPipe, used for in-browser fac
 The package tarball downloaded from the npm registry had SHA-256 `535175845f4ef8509b0240a0831abe8bcb3fa882accda6d080a4ede562a50a71`.
 
 Everything runs locally in the browser tab. No camera frame is sent to any server.
+
+The full license text is in `LICENSE-Apache-2.0.txt` in this folder (terms and conditions of the standard Apache License 2.0).

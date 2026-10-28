@@ -1,8 +1,8 @@
 > Historical engineering notes written while Twitch access was locked. Where they say "does not connect to real Twitch", see the top-level README: live access is now enabled behind an explicit user click.
 
-# StreamerMayhem — Matrix Dodge local simulation
+# StreamerMayhem — local simulation (engineering notes)
 
-The Matrix Dodge simulation is playable locally with a synthetic avatar, synthetic chat, an optional Twitch CLI mock transport and an optional local OAuth/chat simulator. It does not connect to real Twitch or OBS and has no camera, model, or OBS integration. The Twitch provider code and settings are present, but live authorization and networking are hard-locked and have not been validated against Twitch.
+The simulation is playable locally with a synthetic avatar, synthetic chat, an optional Twitch CLI mock transport and an optional local OAuth/chat simulator. It does not connect to real Twitch or OBS and has no camera, model, or OBS integration. The Twitch provider code and settings are present, but live authorization and networking are hard-locked and have not been validated against Twitch.
 
 ## Play locally
 
