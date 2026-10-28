@@ -1,5 +1,6 @@
 import {PoseFreeze} from './pose_freeze.mjs';
 import {ActionGames} from './action_games.mjs';
+import {dropCaught} from './drop_lanes.mjs';
 const finite = Number.isFinite;
 export const CROSS_CELLS = Object.freeze([2,4,5,6,8]);
 
@@ -202,16 +203,21 @@ export class MatrixGame {
     const frame = [...this.frames].reverse().find(f => f.captureTime <= atWall) ?? null;
     const point = this.frameUsable(frame, atWall) ? anchorPoint(frame, this.config.confidence) : null;
     const current = gridCell(point, this.config.confidence);
-    const inCells = current !== null && (attack.cells ?? [attack.cell]).includes(current);
-    // A drop is the reverse of an attack: being under it scores, missing it costs nothing.
-    const outcome = current === null ? 'UNKNOWN' : attack.kind === 'DROP' ? (inCells ? 'CATCH' : 'MISS') : inCells ? 'HIT' : 'DODGE';
+    // A drop is the reverse of an attack: catching it scores, missing it costs nothing. Only the left/right position counts,
+    // so leaving the window vertically does not make a drop unknown; only a missing or low-confidence point does.
+    // The catcher follows the streamer's x; the drop is caught when the catcher covers the item's target x (see drop_lanes.mjs).
+    const caught = attack.kind === 'DROP' && point ? dropCaught(point.x, attack.cell - 3) : null;
+    const inCells = attack.kind === 'DROP' ? caught === true : current !== null && (attack.cells ?? [attack.cell]).includes(current);
+    const known = attack.kind === 'DROP' ? caught !== null : current !== null;
+    const outcome = !known ? 'UNKNOWN' : attack.kind === 'DROP' ? (inCells ? 'CATCH' : 'MISS') : inCells ? 'HIT' : 'DODGE';
     const hpBefore = this.hp, scoreBefore = this.score;
     if (outcome === 'HIT') this.hp = Math.max(0,this.hp-this.config.damage);
     if (outcome === 'DODGE') this.score += this.config.dodgeScore;
     if (outcome === 'CATCH') this.score += this.config.dropScore;
     const result = { eventId:attack.eventId, cell:attack.cell,
       ...(attack.cells ? {kind:attack.kind,cells:[...attack.cells]} : {}), outcome, sampledFrameId:frame?.frameId ?? null,
-      sampledAt:atWall, hpDelta:this.hp-hpBefore, scoreDelta:this.score-scoreBefore };
+      sampledAt:atWall, hpDelta:this.hp-hpBefore, scoreDelta:this.score-scoreBefore,
+      ...(attack.kind === 'DROP' ? {sampledX:point ? point.x : null, caught} : {}) };
     this.recordResult(result);
     if (this.hp === 0) { this.mode='ROUND_END'; this.emit('status',{status:'ROUND_END'}); }
     return result;

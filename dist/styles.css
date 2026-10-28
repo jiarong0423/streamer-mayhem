@@ -23,3 +23,5 @@
 
 .challenge-controls{margin:18px 0;padding-top:16px;border-top:1px solid var(--line,#c8c9b8)}.challenge-controls>label{display:flex;gap:8px;align-items:center;font-size:12px;margin:12px 0;flex-wrap:wrap}.challenge-controls input[type="range"]{flex:1;min-width:80px;accent-color:var(--accent,#9cac4f)}.challenge-controls select{max-width:100%;font:inherit;color:var(--ink,#263126);background:var(--surface,#fff);border:1px solid var(--line,#c8c9b8);padding:6px}.joint-toggles{display:flex;gap:12px;flex-wrap:wrap;font-size:12px}.joint-toggles label{display:flex;align-items:center;gap:4px}.challenge-controls .mini-actions{flex-wrap:wrap}.challenge-controls button{min-height:36px}
 @media(min-width:1101px) and (min-height:700px){.arena-column{position:sticky;top:12px;align-self:start}}
+
+.camera-debug{margin:6px 0 0;font:600 11px/1.4 monospace;color:var(--ink);opacity:.8}

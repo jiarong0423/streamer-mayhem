@@ -9,6 +9,7 @@ import { IrcAnonymousChat, normalizeChannel } from './irc_anonymous.mjs';
 import { CameraTracker, PointStabilizer } from './camera_tracker.mjs';
 import { drawArena } from './arena_draw.mjs';
 import {AutoFrame} from './auto_frame.mjs';
+import {dropColumn,dropTarget,DROP_FLOOR} from './drop_lanes.mjs';
 import {CatchBurst,loadSprites} from './catch_fx.mjs';
 import {createCameraGeometry,centerCrop,projectCameraPoint,projectCameraFrame,canvasPointToSource,visiblePointToCanvas} from './camera_geometry.mjs';
 import {makeOverlayState,OVERLAY_CLOSED_TYPE} from './overlay_protocol.mjs';
@@ -38,9 +39,9 @@ loadSprites().then(sprites=>{fxSprites=sprites;});
 const game=new MatrixGame({onEvent:event=>{
   if(event.type==='result'){
     if(event.outcome==='CATCH'&&cameraGeometry){
-      // Burst where the streamer is (their marker), or at the bottom of the dropped column if no marker is on screen.
+      // Burst where the item was caught: at its target x on the floor line.
       const v=cameraGeometry.visible,column=(event.cells?.[0]??event.cell-3),size=v.width/3;
-      const at=lastMarker??{x:v.x+(column-.5)*v.width/3,y:v.y+v.height*.75};catchFx.spawn(at.x,at.y,performance.now(),size*.8);
+      const at={x:v.x+(dropTarget(column)??.5)*v.width,y:v.y+DROP_FLOOR*v.height};catchFx.spawn(at.x,at.y,performance.now(),size*.5);
     }
     lastEffect={outcome:event.outcome,at:performance.now(),scoreDelta:event.scoreDelta??0};
     const titles={HIT:'Ouch, hit!',DODGE:'Nice dodge',CATCH:'Caught it!',MISS:'Missed it'};
@@ -166,17 +167,32 @@ function syncCameraGeometry(){
   cameraGeometry=buildCameraGeometry(w,h);
   stabilizer.reset();game.invalidateTracking();frameSource.reset();
 }
+const GRACE_MS=400;let lastGood=null;
 const autoFrame=new AutoFrame();
+// Optional readout for real-camera tests: open the page with ?debug=1. It shows why a drop was UNKNOWN (low score, slow frames, no face).
+const debugStats={frames:0,since:performance.now(),fps:0,score:null,shownAt:0};
+const debugOn=new URLSearchParams(location.search).has('debug');
+function updateDebug(now,snapshot){
+  if(!debugOn||now-debugStats.shownAt<250)return;
+  const dt=(now-debugStats.since)/1000;if(dt>=1){debugStats.fps=debugStats.frames/dt;debugStats.frames=0;debugStats.since=now;}
+  debugStats.shownAt=now;const v=cameraGeometry?.visible,x=v&&lastMarker?(lastMarker.x-v.x)/v.width:null,lane=dropColumn(x);
+  const el=$('#camera-debug');el.hidden=false;
+  el.textContent=`score ${debugStats.score===null?'none':debugStats.score.toFixed(2)} · fps ${debugStats.fps.toFixed(1)} · x ${x===null?'—':Math.round(x*100)+'%'} · lane ${lane===null?'—':['L','C','R'][lane-1]} · ${snapshot.mode}`+(snapshot.lastResult?.kind==='DROP'?` · judged ${snapshot.lastResult.outcome} x ${snapshot.lastResult.sampledX===null?'—':Math.round(snapshot.lastResult.sampledX*100)+'%'} caught ${snapshot.lastResult.caught===null?'—':snapshot.lastResult.caught}`:'');
+}
 function pollCamera(){
   syncCameraGeometry();
   const result=cameraTracker.poll();
   if(!result.fresh)return;
+  debugStats.frames++;debugStats.score=result.points?.torso?.visibility??null;
   // Automatic digital zoom: frame the face once it is steady, and again only if the person moves much closer or farther.
   if(cameraTracker.kind==='face'&&$('#camera-auto').checked){
     const crop=autoFrame.update(cameraTracker.lastFace,performance.now());
-    if(crop){setCameraCrop(crop);$('#camera-status').textContent='Auto-framed: the grid now covers about five face widths around you, with room above your head; lean a little to change column.';}
+    if(crop){setCameraCrop(crop);$('#camera-status').textContent='Auto-framed: the grid now covers about six face widths around you, with room above your head; lean a little to change column.';}
   }
-  if(result.points)frameSource.capture(result.points);else stabilizer.reset();
+  // A tilted head can drop the face for a few frames; keep the last position for a short grace period instead of declaring tracking lost.
+  if(result.points){lastGood={points:result.points,at:performance.now()};frameSource.capture(result.points);}
+  else if(lastGood&&performance.now()-lastGood.at<GRACE_MS)frameSource.capture(lastGood.points);
+  else{stabilizer.reset();lastGood=null;}
 }
 function drawCameraBackdrop(context,geometry){
   const video=$('#camera-video');if(video.readyState<2)return;
@@ -209,7 +225,7 @@ $('#camera-toggle').addEventListener('click',async()=>{
   if(cameraOn||cameraTracker){cameraTracker?.stop();cameraTracker=null;autoFrame.reset();$('#camera-center').disabled=true;$('#camera-center-reset').disabled=true;cameraCrop=NO_CROP;$('#camera-zoom').disabled=true;$('#camera-zoom-reset').disabled=true;$('#camera-facing').disabled=false;$('#camera-kind').disabled=false;setCameraMode(false);$('#camera-status').textContent='Camera off. Keyboard or mouse input is used.';return;}
   button.disabled=true;$('#camera-status').textContent='Starting camera and loading the pose model…';
   const labels={CAMERA_DENIED:'Camera permission was denied. Allow the camera for this page and try again.',CAMERA_UNSUPPORTED:'This browser cannot open a camera here. Use http://localhost:4173/.',MODEL_FAILED:'The pose model could not start.'};
-  const facing=$('#camera-facing').value,kind=$('#camera-kind').value;cameraMirror=facing==='user';cameraKindLabel=kind==='face'?'CAMERA FACE TRACKING':'CAMERA POSE TRACKING';
+  const facing=$('#camera-facing').value,kind=$('#camera-kind').value;cameraMirror=$('#camera-mirror').checked;cameraKindLabel=kind==='face'?'CAMERA FACE TRACKING':'CAMERA POSE TRACKING';
   const tracker=new CameraTracker({video:$('#camera-video'),kind,facingMode:facing,onStatus:(status,detail)=>{if(status==='FAILED')$('#camera-status').textContent=labels[detail]??'Camera tracking failed.';}});
   const ok=await tracker.start();
   button.disabled=false;
@@ -221,8 +237,10 @@ $('#camera-center').addEventListener('click',()=>{
   if(!cameraTracker)return;
   const crop=cameraTracker.kind==='face'?centerCrop(cameraTracker.lastFace):null;
   if(!crop){$('#camera-status').textContent='No face found yet. Sit in view, then try again.';return;}
-  setCameraCrop(crop);autoFrame.adopt(cameraTracker.lastFace);$('#camera-status').textContent='Centered. The grid now covers about five face widths around you, with room above your head; lean a little to change column.';
+  setCameraCrop(crop);autoFrame.adopt(cameraTracker.lastFace);$('#camera-status').textContent='Centered. The grid now covers about six face widths around you, with room above your head; lean a little to change column.';
 });
+// Mirror can be flipped while the camera runs; the grid, lanes and backdrop are rebuilt for the new orientation.
+$('#camera-mirror').addEventListener('change',()=>{cameraMirror=$('#camera-mirror').checked;if(cameraOn)setCameraCrop(cameraCrop);});
 $('#camera-center-reset').addEventListener('click',()=>{$('#camera-auto').checked=false;autoFrame.reset();setCameraCrop(null);$('#camera-status').textContent='View reset to the whole camera frame.';});
 // Full screen keeps the whole 3x3 grid on screen (phone browser bars otherwise cut off the bottom row).
 $('#fullscreen').addEventListener('click',async()=>{
@@ -245,7 +263,7 @@ function loop(){
   const last=frameSource.lastFrame,anchor=cameraOn?(last?.torso??last?.nose??null):(last?.nose??null);
   const drawn=drawArena(ctx,snapshot,anchor,{now,lastEffect,tracking:frameSource.running&&Boolean(anchor),geometry:cameraGeometry,
     backdrop:cameraOn?drawCameraBackdrop:null,marker:cameraOn});lastMarker=drawn?.position??null;
-  catchFx.draw(ctx,now,fxSprites,cameraGeometry?.visible??null);updateScreen(snapshot);
+  catchFx.draw(ctx,now,fxSprites,cameraGeometry?.visible??null);updateDebug(now,snapshot);updateScreen(snapshot);
   if(now-lastOverlayUpdate>=100){lastOverlayUpdate=now;publishOverlay(snapshot);}
   animationId=requestAnimationFrame(loop);
 }

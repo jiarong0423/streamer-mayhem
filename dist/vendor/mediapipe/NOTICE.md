@@ -9,6 +9,7 @@ These files are unmodified copies of Google's MediaPipe, used for in-browser fac
 | `wasm/vision_wasm_internal.wasm` | same package (`wasm/vision_wasm_internal.wasm`) | `bcc13df22d3d69ec8cbe8e280989356d844ae00f4523eb82072d2484f44134dc` |
 | `pose_landmarker_lite.task` | https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task | `59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a` |
 | `blaze_face_short_range.tflite` | https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite | `b4578f35940bf5a1a655214a1cce5cab13eba73c1297cd78e1a04c2380b0152f` |
+| `face_landmarker.task` | https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task | `64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff` |
 
 The package tarball downloaded from the npm registry had SHA-256 `535175845f4ef8509b0240a0831abe8bcb3fa882accda6d080a4ede562a50a71`.
 

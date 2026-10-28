@@ -5,7 +5,7 @@ import {centerCrop} from './camera_geometry.mjs';
 const finite=Number.isFinite;
 
 export class AutoFrame {
-  constructor({frames=12,low=.7,high=1.4,holdMs=2000,span=5}={}) {
+  constructor({frames=12,low=.7,high=1.4,holdMs=2000,span=6}={}) {
     if(!Number.isInteger(frames)||frames<1||!(low>0&&low<1)||!(high>1)||!(holdMs>=0)||!(span>0))throw new RangeError('INVALID_AUTO_FRAME');
     this.frames=frames;this.low=low;this.high=high;this.holdMs=holdMs;this.span=span;this.reset();
   }

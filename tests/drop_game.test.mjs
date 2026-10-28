@@ -6,7 +6,7 @@ import {createCameraGeometry} from '../dist/camera_geometry.mjs';
 import {OVERLAY_STATE_TYPE} from '../dist/overlay_protocol.mjs';
 
 const point=(x,y=.5)=>({x,y,visibility:1});
-const column=n=>point((n-.5)/3);
+const column=n=>point([.35,.5,.65][n-1]);
 const frame=(id,at,nose)=>({frameId:id,captureTime:at,nose,leftShoulder:null,rightShoulder:null});
 
 function setup(options={}) {
@@ -95,7 +95,7 @@ test('DROP-09 the overlay draws a small falling orb inside the dropped column on
   assert.ok(arcs.length>=1);
   for(const [,[x]] of arcs)assert.ok(x>1280/3&&x<2*1280/3,`x ${x}`);
   const [,[ox,oy,radius]]=arcs.at(-1);
-  assert.ok(Math.abs(ox-640)<1);assert.ok(oy>720*.3&&oy<720*.7,`y ${oy}`);
+  assert.ok(Math.abs(ox-640)<1);assert.ok(oy>720*.2&&oy<720*.6,`y ${oy}`);
   assert.ok(radius>=4&&radius<1280/3/8,`orb radius ${radius} should stay small`);
 });
 
@@ -103,4 +103,38 @@ test('DROP-10 overlay protocol accepts a drop and rejects a forged one',async()=
   const {renderOverlayState}=await import('../dist/overlay_protocol.mjs').catch(()=>({}));
   assert.equal(typeof OVERLAY_STATE_TYPE,'string');
   if(typeof renderOverlayState!=='function')return;
+});
+
+import {DROP_TARGETS,DROP_CATCH_HALF,DROP_START,DROP_FLOOR,dropTarget,dropCaught,dropColumn,dropY} from '../dist/drop_lanes.mjs';
+test('DROP-11 targets sit close to the middle and the catcher is about one face width wide',()=>{
+  assert.deepEqual([...DROP_TARGETS],[.35,.5,.65]);assert.equal(DROP_CATCH_HALF,.09);
+  for(const [c,t] of [[1,.35],[2,.5],[3,.65]])assert.equal(dropTarget(c),t);
+  for(const bad of [0,4,1.5,NaN,undefined])assert.equal(dropTarget(bad),null);
+  // The window is about six face widths wide: a catcher of 0.18 is about one face width, a side target is about 0.9 face widths from the middle.
+  assert.ok(Math.abs(2*DROP_CATCH_HALF*6-1.08)<.001);assert.ok(Math.abs((DROP_TARGETS[1]-DROP_TARGETS[0])*6-.9)<.001);
+});
+test('DROP-12 caught means the catcher covers the target; between targets or outside the window is not a catch / unknown',()=>{
+  assert.equal(dropCaught(.35,1),true);assert.equal(dropCaught(.35+.09,1),true);assert.equal(dropCaught(.35+.0901,1),false);assert.equal(dropCaught(.35-.0901,1),false);
+  assert.equal(dropCaught(.5,2),true);assert.equal(dropCaught(.5,1),false);assert.equal(dropCaught(.65,3),true);assert.equal(dropCaught(.5,3),false);
+  for(const bad of [-.01,1.01,NaN,undefined,null,'0.5'])assert.equal(dropCaught(bad,2),null);
+  assert.equal(dropCaught(.5,9),null);
+  assert.equal(dropColumn(.35),1);assert.equal(dropColumn(.5),2);assert.equal(dropColumn(.65),3);assert.equal(dropColumn(.42),1);assert.equal(dropColumn(.43),2);assert.equal(dropColumn(.2),null);assert.equal(dropColumn(NaN),null);
+});
+test('DROP-13 judging uses left/right only: height never matters, a missing or out-of-window x is unknown',()=>{
+  for(const y of [-5,.5,5]){
+    const s=setup();s.feed(100,{x:.5,y,visibility:1});s.send('!drop 2');
+    s.feed(s.clock.now+s.game.config.dropFall+200,{x:.5,y,visibility:1});
+    assert.equal(s.game.snapshot().lastResult.outcome,'CATCH',`y=${y}`);
+  }
+  const near=setup();near.feed(100,{x:.41,y:.5,visibility:1});near.send('!drop 1');
+  near.feed(near.clock.now+near.game.config.dropFall+200,{x:.41,y:.5,visibility:1});
+  const r=near.game.snapshot().lastResult;assert.equal(r.outcome,'CATCH');assert.equal(r.caught,true);assert.ok(Math.abs(r.sampledX-.41)<1e-9);
+  const far=setup();far.feed(100,{x:.5,y:.5,visibility:1});far.send('!drop 1');
+  far.feed(far.clock.now+far.game.config.dropFall+200,{x:.5,y:.5,visibility:1});
+  assert.equal(far.game.snapshot().lastResult.outcome,'MISS');assert.equal(far.game.snapshot().lastResult.caught,false);
+});
+test('DROP-14 the item starts above the window and lands near the bottom',()=>{
+  assert.ok(DROP_START<0);assert.ok(DROP_FLOOR>.85&&DROP_FLOOR<1);
+  assert.equal(dropY(0),DROP_START);assert.equal(dropY(1),DROP_FLOOR);assert.equal(dropY(-1),DROP_START);assert.equal(dropY(5),DROP_FLOOR);
+  assert.ok(dropY(.5)>dropY(.25)&&dropY(.75)>dropY(.5));
 });

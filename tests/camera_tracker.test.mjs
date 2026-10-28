@@ -141,3 +141,43 @@ test('zoom is clamped to the range, and unsupported or failing cameras are repor
   bad.tracker.stream.getVideoTracks()[0].applyConstraints=async()=>{throw new Error('x');};
   assert.deepEqual(await bad.tracker.zoomToFace(),{ok:false,reason:'ZOOM_FAILED'});
 });
+
+import { faceLandmarksToPoints } from '../dist/camera_tracker.mjs';
+// A synthetic 478-point face: a grid of points inside a box so the bounding box is known.
+const landmarks=(cx=.5,cy=.45,w=.16,h=.28,over=[])=>{
+  const pts=[];for(let i=0;i<478;i++)pts.push({x:cx-w/2+w*((i%23)/22),y:cy-h/2+h*(Math.floor(i/23)/20.8),z:0});
+  pts[1]={x:cx,y:cy+.02,z:0};for(const [i,v] of over)pts[i]=v;return pts;
+};
+test('LANDMARK-01 landmarks map to the nose tip, a face-box centre anchor and the face box',()=>{
+  const out=faceLandmarksToPoints(landmarks());
+  assert.ok(Math.abs(out.points.nose.x-.5)<1e-9&&Math.abs(out.points.nose.y-.47)<1e-9&&out.points.nose.visibility===1);
+  assert.ok(Math.abs(out.points.torso.x-.5)<.01&&Math.abs(out.points.torso.y-.45)<.01);assert.equal(out.points.leftShoulder,null);
+  assert.ok(Math.abs(out.face.fw-.16)<.01&&Math.abs(out.face.cx-.5)<.01&&Math.abs(out.face.cy-.45)<.01);
+});
+test('LANDMARK-02 bad or partial landmark sets are rejected',()=>{
+  assert.equal(faceLandmarksToPoints(null),null);assert.equal(faceLandmarksToPoints(undefined),null);assert.equal(faceLandmarksToPoints([]),null);
+  assert.equal(faceLandmarksToPoints(landmarks().slice(0,300)),null);
+  assert.equal(faceLandmarksToPoints(landmarks(1.5,.5)),null);                 // centre outside the frame
+  const flat=Array.from({length:478},()=>({x:.5,y:.5}));assert.equal(faceLandmarksToPoints(flat),null);
+});
+test('LANDMARK-03 face mode prefers the landmarker, keeps tracking a tilted face and reports the face box',async()=>{
+  const created=[];const video=fakeVideo();video.videoWidth=1280;video.videoHeight=720;
+  const vision={FilesetResolver:{forVisionTasks:async()=>({})},
+    FaceLandmarker:{createFromOptions:async(f,o)=>{created.push(o.baseOptions.modelAssetPath);return {close(){},detectForVideo(){return {faceLandmarks:[landmarks(.62,.4)]};}};}},
+    FaceDetector:{createFromOptions:async()=>{throw new Error('detector should not be used');}}};
+  const tracker=new CameraTracker({video,kind:'face',loadVision:async()=>vision,mediaDevices:media().mediaDevices});
+  assert.equal(await tracker.start(),true);assert.match(created[0],/face_landmarker\.task$/);assert.equal(tracker.faceEngine,'landmarker');
+  video.currentTime=.1;const r=tracker.poll();assert.equal(r.fresh,true);
+  assert.ok(Math.abs(r.points.torso.x-.62)<.01);assert.ok(Math.abs(tracker.lastFace.cx-.62)<.01&&tracker.lastFace.fw>.1);
+});
+test('LANDMARK-04 an empty landmark result is a fresh frame with no person; the detector is the fallback when the landmarker cannot start',async()=>{
+  const video=fakeVideo();video.videoWidth=1280;video.videoHeight=720;
+  const empty={FilesetResolver:{forVisionTasks:async()=>({})},FaceLandmarker:{createFromOptions:async()=>({close(){},detectForVideo(){return {faceLandmarks:[]};}})}};
+  const t1=new CameraTracker({video,kind:'face',loadVision:async()=>empty,mediaDevices:media().mediaDevices});await t1.start();
+  video.currentTime=.1;const r=t1.poll();assert.deepEqual([r.fresh,r.points,t1.lastFace],[true,null,null]);
+  const video2=fakeVideo();video2.videoWidth=1280;video2.videoHeight=720;
+  const broken={FilesetResolver:{forVisionTasks:async()=>({})},FaceLandmarker:{createFromOptions:async()=>{throw new Error('no gpu or cpu');}},
+    FaceDetector:{createFromOptions:async()=>({close(){},detectForVideo(){return {detections:[face()]};}})}};
+  const t2=new CameraTracker({video:video2,kind:'face',loadVision:async()=>broken,mediaDevices:media().mediaDevices});
+  assert.equal(await t2.start(),true);assert.equal(t2.faceEngine,'detector');video2.currentTime=.1;assert.ok(t2.poll().points.torso);
+});

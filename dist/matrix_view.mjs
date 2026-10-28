@@ -1,4 +1,5 @@
 // Pure geometry and Canvas drawing; this module does not access a camera or network.
+import {dropTarget,dropY,DROP_FLOOR,DROP_CATCH_HALF} from './drop_lanes.mjs';
 export function containRect(viewWidth, viewHeight, sourceWidth, sourceHeight) {
   if (![viewWidth,viewHeight,sourceWidth,sourceHeight].every(n=>Number.isFinite(n) && n>0)) throw new RangeError('Invalid dimensions');
   const scale=Math.min(viewWidth/sourceWidth,viewHeight/sourceHeight);
@@ -69,16 +70,16 @@ export function drawCameraOverlay(ctx,geometry,snapshot,{clear=true,grid=false}=
   if(grid)for(const cell of cells){ctx.strokeRect(cell.x,cell.y,cell.width,cell.height);ctx.fillText(String(cell.cell),cell.x+4,cell.y+fontSize+3);}
   for(const attack of snapshot.attacks??[]){
     if(attack.kind==='DROP'){
-      // Catch mode: a small golden orb falls down one column; being in that column when it lands scores.
-      // A soft column guide, a landing ring that tightens as it nears, a short trail and a glow keep it readable without hiding the face.
-      const top=cells[attack.cells[0]-1];if(!top)continue;
-      const cx=top.x+top.width/2,radius=Math.max(4,Math.min(top.width/12,rect.height/22)),p=Math.max(0,Math.min(1,attack.progress??0));
-      const y=rect.y+radius*2+p*(rect.height-radius*4),floor=rect.y+rect.height-radius*1.5;
-      const guide=ctx.createLinearGradient(0,rect.y,0,rect.y+rect.height);
-      guide.addColorStop(0,'rgba(217,249,101,0)');guide.addColorStop(1,'rgba(217,249,101,.16)');
-      ctx.fillStyle=guide;ctx.fillRect(top.x,rect.y,top.width,rect.height);
-      ctx.strokeStyle=`rgba(217,249,101,${(.25+.55*p).toFixed(3)})`;ctx.lineWidth=Math.max(1.5,radius/4);
-      ctx.beginPath();ctx.ellipse(cx,floor,radius*(3-1.6*p),radius*(1.1-.5*p),0,0,2*Math.PI);ctx.stroke();
+      // Catch mode: a small golden orb falls from above the window to its target x near the bottom; the streamer's catcher (drawn by the arena) must cover it.
+      // A faint guide line, a landing ring the width of the catcher, a short trail and a glow keep it readable without hiding the face.
+      const target=dropTarget(attack.cell-3);if(target===null)continue;
+      const cx=rect.x+target*rect.width,radius=Math.max(4,Math.min(rect.width/36,rect.height/22)),p=Math.max(0,Math.min(1,attack.progress??0));
+      const y=rect.y+dropY(p)*rect.height,floor=rect.y+DROP_FLOOR*rect.height,ringHalf=DROP_CATCH_HALF*rect.width;
+      const guide=ctx.createLinearGradient(0,rect.y,0,floor);
+      guide.addColorStop(0,'rgba(217,249,101,0)');guide.addColorStop(1,'rgba(217,249,101,.28)');
+      ctx.fillStyle=guide;ctx.fillRect(cx-Math.max(1,radius/6),rect.y,Math.max(2,radius/3),floor-rect.y);
+      ctx.strokeStyle=`rgba(217,249,101,${(.3+.5*p).toFixed(3)})`;ctx.lineWidth=Math.max(1.5,radius/4);
+      ctx.beginPath();ctx.ellipse(cx,floor+radius*.4,ringHalf*(1.15-.15*p),radius*(1.0-.3*p),0,0,2*Math.PI);ctx.stroke();
       for(let i=3;i>=1;i--){ctx.fillStyle=`rgba(255,210,63,${(.09*(4-i)).toFixed(3)})`;ctx.beginPath();ctx.arc(cx,y-i*radius*1.1,radius*(1-.2*i),0,2*Math.PI);ctx.fill();}
       const glow=ctx.createRadialGradient(cx,y,radius*.2,cx,y,radius*2.8);
       glow.addColorStop(0,'rgba(255,214,90,.5)');glow.addColorStop(1,'rgba(255,214,90,0)');

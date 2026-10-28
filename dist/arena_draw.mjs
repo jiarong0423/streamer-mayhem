@@ -1,4 +1,5 @@
 import {drawCameraOverlay} from './matrix_view.mjs';
+import {dropCaught,DROP_CATCH_HALF,DROP_FLOOR} from './drop_lanes.mjs';
 import {projectCameraPoint,visiblePointToCanvas} from './camera_geometry.mjs';
 
 function roundBox(ctx,x,y,w,h,r){ctx.beginPath();ctx.roundRect(x,y,w,h,r);}
@@ -18,7 +19,18 @@ export function drawArena(ctx,snapshot,player,{now=0,lastEffect=null,tracking=tr
   const mapped=playing&&tracking&&player?projectCameraPoint({...player,visibility:1},geometry):null;
   const position=visiblePointToCanvas(mapped,geometry);
   if(position&&marker){
-    ctx.save();ctx.beginPath();ctx.rect(rect.x,rect.y,rect.width,rect.height);ctx.clip();ctx.strokeStyle='#d9f965';ctx.lineWidth=4;ctx.beginPath();ctx.arc(position.x,position.y,Math.max(10,Math.min(26,rect.width/40)),0,2*Math.PI);ctx.stroke();
+    ctx.save();ctx.beginPath();ctx.rect(rect.x,rect.y,rect.width,rect.height);ctx.clip();// While an item is falling, a catcher the width of the catch zone follows the streamer along the bottom; it turns gold when it covers the item.
+    const drop=snapshot.attacks?.find(a=>a.kind==='DROP'),relX=(position.x-rect.x)/rect.width,inLane=Boolean(drop)&&dropCaught(relX,drop.cell-3)===true;
+    const ringRadius=Math.max(10,Math.min(26,rect.width/40))*(inLane?1.35:1);
+    if(drop){
+      const half=DROP_CATCH_HALF*rect.width,cy=rect.y+DROP_FLOOR*rect.height+Math.max(6,rect.height/60),h=Math.max(8,rect.height/36),cx=Math.max(rect.x+half,Math.min(rect.x+rect.width-half,position.x));
+      ctx.save();ctx.globalAlpha=.9;ctx.lineWidth=Math.max(1.5,h/6);
+      ctx.strokeStyle=inLane?'rgba(255,210,63,.55)':'rgba(231,241,220,.28)';ctx.beginPath();ctx.moveTo(position.x,position.y+ringRadius);ctx.lineTo(cx,cy-h);ctx.stroke();
+      if(inLane){ctx.shadowColor='rgba(255,210,63,.9)';ctx.shadowBlur=h*1.5;}
+      ctx.fillStyle=inLane?'#ffd23f':'rgba(231,241,220,.85)';ctx.beginPath();ctx.roundRect(cx-half,cy-h/2,half*2,h,h/2);ctx.fill();ctx.restore();
+    }
+    if(inLane){ctx.shadowColor='rgba(255,210,63,.9)';ctx.shadowBlur=ringRadius;}
+    ctx.strokeStyle=inLane?'#ffd23f':'#d9f965';ctx.lineWidth=inLane?6:4;ctx.beginPath();ctx.arc(position.x,position.y,ringRadius,0,2*Math.PI);ctx.stroke();ctx.shadowBlur=0;
     ctx.fillStyle='#00ffff';ctx.beginPath();ctx.arc(position.x,position.y,5,0,2*Math.PI);ctx.fill();ctx.restore();
   } else if(position){
     const size=Math.min(1,rect.width/650,rect.height/400);

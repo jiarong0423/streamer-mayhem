@@ -1,5 +1,5 @@
 // Camera pose input. The pose model (MediaPipe Pose Landmarker, Apache-2.0) runs in this browser tab; no video frame is uploaded anywhere.
-export const POSE_ASSETS=Object.freeze({bundle:'./vendor/mediapipe/vision_bundle.mjs',wasm:'./vendor/mediapipe/wasm',model:'./vendor/mediapipe/pose_landmarker_lite.task',faceModel:'./vendor/mediapipe/blaze_face_short_range.tflite'});
+export const POSE_ASSETS=Object.freeze({bundle:'./vendor/mediapipe/vision_bundle.mjs',wasm:'./vendor/mediapipe/wasm',model:'./vendor/mediapipe/pose_landmarker_lite.task',faceModel:'./vendor/mediapipe/blaze_face_short_range.tflite',faceLandmarker:'./vendor/mediapipe/face_landmarker.task'});
 // MediaPipe pose landmark indices ("left" is the person's own left).
 export const LANDMARKS=Object.freeze({nose:0,leftShoulder:11,rightShoulder:12,leftElbow:13,rightElbow:14,leftWrist:15,rightWrist:16,leftHip:23,rightHip:24});
 const finite=Number.isFinite;
@@ -31,6 +31,23 @@ export function faceToPoints(detection,width,height) {
   const tip=detection.keypoints?.[2];
   const nose=toPoint(tip&&{x:tip.x,y:tip.y,visibility:score})??center;
   return {nose,torso:center,leftShoulder:null,rightShoulder:null};
+}
+
+// Face Landmarker result (468+ landmarks normalized to the source frame) -> game points and a face box.
+// The landmarker tracks the face from frame to frame, so a tilted or turning head does not drop out the way a per-frame detector does.
+// The judging anchor (`torso` slot) is the centre of the landmark bounding box; the nose is landmark 1. Returns {points,face:{cx,cy,fw}} or null.
+export function faceLandmarksToPoints(landmarks) {
+  if(!Array.isArray(landmarks) || landmarks.length<468)return null;
+  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity,count=0;
+  for(const l of landmarks){
+    if(!l || !finite(l.x) || !finite(l.y))continue;
+    count++;minX=Math.min(minX,l.x);maxX=Math.max(maxX,l.x);minY=Math.min(minY,l.y);maxY=Math.max(maxY,l.y);
+  }
+  if(count<400 || !(maxX>minX) || !(maxY>minY))return null;
+  const cx=(minX+maxX)/2,cy=(minY+maxY)/2,center=toPoint({x:cx,y:cy,visibility:1});
+  if(!center)return null;
+  const nose=toPoint(landmarks[1]&&{x:landmarks[1].x,y:landmarks[1].y,visibility:1})??center;
+  return {points:{nose,torso:center,leftShoulder:null,rightShoulder:null},face:{cx,cy,fw:maxX-minX}};
 }
 
 const cellOf=p=>Math.min(2,Math.floor(p.y*3))*3+Math.min(2,Math.floor(p.x*3))+1;
@@ -65,7 +82,7 @@ export class CameraTracker {
     if(!['face','pose'].includes(kind))throw new RangeError('INVALID_KIND');
     this.kind=kind;this.facingMode=facingMode;
     this.video=video;this.mediaDevices=mediaDevices;this.loadVision=loadVision;this.assets=assets;this.clock=clock;this.onStatus=onStatus;
-    this.lastFaceWidth=null;this.lastFace=null;this.status='OFF';this.stream=null;this.landmarker=null;this.lastVideoTime=-1;this.lastStamp=-1;
+    this.lastFaceWidth=null;this.lastFace=null;this.faceEngine=null;this.status='OFF';this.stream=null;this.landmarker=null;this.lastVideoTime=-1;this.lastStamp=-1;
   }
   #set(status,detail){this.status=status;this.onStatus(status,detail);}
   async start() {
@@ -77,11 +94,17 @@ export class CameraTracker {
       this.video.srcObject=this.stream;this.video.muted=true;this.video.playsInline=true;await this.video.play();
       const vision=await this.loadVision();
       const fileset=await vision.FilesetResolver.forVisionTasks(this.assets.wasm);
-      const face=this.kind==='face',Task=face?vision.FaceDetector:vision.PoseLandmarker;
-      const options=delegate=>face?{baseOptions:{modelAssetPath:this.assets.faceModel,delegate},runningMode:'VIDEO',minDetectionConfidence:.5}
-        :{baseOptions:{modelAssetPath:this.assets.model,delegate},runningMode:'VIDEO',numPoses:1,minPoseDetectionConfidence:.5,minPosePresenceConfidence:.5,minTrackingConfidence:.5};
-      try{this.landmarker=await Task.createFromOptions(fileset,options('GPU'));}
-      catch{this.landmarker=await Task.createFromOptions(fileset,options('CPU'));}
+      const face=this.kind==='face';
+      const landmarkerOptions=delegate=>({baseOptions:{modelAssetPath:this.assets.faceLandmarker,delegate},runningMode:'VIDEO',numFaces:1,minFaceDetectionConfidence:.35,minFacePresenceConfidence:.35,minTrackingConfidence:.35});
+      const detectorOptions=delegate=>({baseOptions:{modelAssetPath:this.assets.faceModel,delegate},runningMode:'VIDEO',minDetectionConfidence:.35});
+      const poseOptions=delegate=>({baseOptions:{modelAssetPath:this.assets.model,delegate},runningMode:'VIDEO',numPoses:1,minPoseDetectionConfidence:.5,minPosePresenceConfidence:.5,minTrackingConfidence:.5});
+      const create=async(Task,options)=>{try{return await Task.createFromOptions(fileset,options('GPU'));}catch{return await Task.createFromOptions(fileset,options('CPU'));}};
+      this.faceEngine=null;
+      if(face){
+        // Prefer the tracking landmarker; if it cannot start, fall back to the plain face detector.
+        try{if(!vision.FaceLandmarker)throw new Error('NO_LANDMARKER');this.landmarker=await create(vision.FaceLandmarker,landmarkerOptions);this.faceEngine='landmarker';}
+        catch{this.landmarker=await create(vision.FaceDetector,detectorOptions);this.faceEngine='detector';}
+      }else this.landmarker=await create(vision.PoseLandmarker,poseOptions);
       this.#set('ON');return true;
     } catch(error) {
       this.#teardown();
@@ -95,6 +118,11 @@ export class CameraTracker {
     this.lastVideoTime=this.video.currentTime;
     const stamp=Math.max(this.lastStamp+1,Math.floor(this.clock()));this.lastStamp=stamp;
     let result;try{result=this.landmarker.detectForVideo(this.video,stamp);}catch{return {fresh:true,points:null};}
+    if(this.kind==='face'&&this.faceEngine==='landmarker') {
+      const parsed=faceLandmarksToPoints(result?.faceLandmarks?.[0]);
+      this.lastFace=parsed?.face??null;this.lastFaceWidth=this.lastFace?.fw??null;
+      return {fresh:true,points:parsed?.points??null};
+    }
     if(this.kind==='face') {
       const detection=result?.detections?.[0],width=detection?.boundingBox?.width/this.video.videoWidth;
       this.lastFaceWidth=finite(width)&&width>0?width:null;

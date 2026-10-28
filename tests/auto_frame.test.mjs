@@ -8,7 +8,7 @@ test('AUTO-01 frames only after the face has been steady for the required frames
   const a=new AutoFrame({frames:5});
   for(let i=0;i<4;i++)assert.equal(a.update(face(),i*33),null);
   const crop=a.update(face(),4*33);
-  assert.ok(crop);assert.ok(Math.abs(1-crop.left-crop.right-.83)<.001);
+  assert.ok(crop);assert.ok(Math.abs(1-crop.left-crop.right-.996)<.001);
 });
 
 test('AUTO-02 a missing face restarts the steady count',()=>{
@@ -28,7 +28,7 @@ test('AUTO-04 re-frames only after the face stays much bigger or smaller for the
   assert.equal(a.update(face(.5,.42,.30),100),null);
   assert.equal(a.update(face(.5,.42,.30),900),null);
   const crop=a.update(face(.5,.42,.30),1200);
-  assert.ok(crop);assert.ok(Math.abs(1-crop.left-crop.right-Math.min(1,.30*5))<.001);
+  assert.ok(crop);assert.ok(Math.abs(1-crop.left-crop.right-Math.min(1,.30*6))<.001);
   // The new size is the reference now, so staying there is stable.
   assert.equal(a.update(face(.5,.42,.30),5000),null);
 });
