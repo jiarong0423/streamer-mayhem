@@ -19,16 +19,25 @@ export function gridCell(point, threshold = 0.55) {
   return Math.min(2, Math.floor(point.y * 3)) * 3 + Math.min(2, Math.floor(point.x * 3)) + 1;
 }
 
+// Twitch pads a repeated message with invisible characters (U+E0000 and friends); strip them, and turn a no-break space into a plain one, before parsing.
+export const cleanCommand = text => text.replace(/[\u200B-\u200F\u2060\uFEFF\u{E0000}-\u{E007F}]/gu, '').replace(/\u00A0/g, ' ').trim();
+
 export function parseMatrixCommand(text) {
   if (typeof text !== 'string' || text.length > 100) return null;
-  const match = /^!throw\s+([1-9])$/i.exec(text.trim());
+  const match = /^!throw\s+([1-9])$/i.exec(cleanCommand(text));
   return match ? Number(match[1]) : null;
 }
 
 // Catch mode: `!drop 1|2|3` drops an item down the left, middle or right column; the streamer catches it by being in that column when it lands.
 export function parseDropCommand(text) {
   if (typeof text !== 'string' || text.length > 100) return null;
-  const match = /^!drop\s+([1-3])$/i.exec(text.trim());
+  const match = /^!drop\s+([1-3])$/i.exec(cleanCommand(text));
+  return match ? Number(match[1]) : null;
+}
+// `!bomb 1|2|3` drops a bomb on the same targets: the streamer should keep the catcher away from it.
+export function parseBombCommand(text) {
+  if (typeof text !== 'string' || text.length > 100) return null;
+  const match = /^!bomb\s+([1-3])$/i.exec(cleanCommand(text));
   return match ? Number(match[1]) : null;
 }
 export const dropCells = column => [column, column + 3, column + 6];
@@ -37,13 +46,13 @@ export class MatrixGame {
   constructor({ clock = () => performance.now(), onEvent = () => {}, options = {} } = {}) {
     this.clock = clock;
     this.onEvent = onEvent;
-    this.config = { maxAge: 250, confidence: .55, warning: 500, crossWarning: 1500, dropFall: 2500, dropScore: 25, recovery: 1000,
+    this.config = { maxAge: 250, confidence: .55, warning: 500, crossWarning: 1500, dropFall: 2500, dropScore: 25, bombPenalty: 25, avoidScore: 10, recovery: 1000,
       actorCooldown: 3000, globalCooldown: 400, maxAttacks: 8, ringTime: 1000,
       ringDamage: 10, damage: 15, dodgeScore: 25, freezeDamage:12, freezeScore:100, freezeCooldown:8000,
       mosquitoDamage:5,mosquitoScore:50,lavaDamage:5,lavaScore:75,actionCooldown:8000,
       dedupeTtl: 600000, dedupeLimit: 2000, maxResults: 200,
       ring: { left: .04, right: .96, top: .04, bottom: .96 }, ...options };
-    for (const key of ['maxAge','warning','crossWarning','dropFall','dropScore','recovery','actorCooldown','globalCooldown','ringTime','dedupeTtl']) {
+    for (const key of ['maxAge','warning','crossWarning','dropFall','dropScore','bombPenalty','avoidScore','recovery','actorCooldown','globalCooldown','ringTime','dedupeTtl']) {
       if (!finite(this.config[key]) || this.config[key] < 0) throw new RangeError(`Invalid ${key}`);
     }
     for (const key of ['maxAttacks','dedupeLimit','maxResults']) {
@@ -138,8 +147,16 @@ export class MatrixGame {
   receiveChat(event) {
     const drop = parseDropCommand(event?.text);
     if (drop !== null) return this.#receiveAttack(event, {cell:drop + 3, kind:'DROP', cells:dropCells(drop), warning:this.config.dropFall});
+    const bomb = parseBombCommand(event?.text);
+    if (bomb !== null) return this.#receiveAttack(event, {cell:bomb + 3, kind:'DROP', variant:'BOMB', cells:dropCells(bomb), warning:this.config.dropFall});
     const cell = parseMatrixCommand(event?.text);
     return this.#receiveAttack(event, cell === null ? null : {cell, warning:this.config.warning});
+  }
+
+  // Automatic waves of drops (local game logic, not chat): `fall` is this item's own fall time in ms, `variant` is 'BOMB' or omitted for a gold item.
+  receiveWaveDrop(event,{column,variant,fall}={}) {
+    if (![1,2,3].includes(column) || !Number.isFinite(fall) || fall < 100 || fall > 10000 || (variant !== undefined && variant !== 'BOMB')) return { accepted:false, reason:'INVALID_COMMAND' };
+    return this.#receiveAttack(event, {cell:column + 3, kind:'DROP', ...(variant ? {variant} : {}), cells:dropCells(column), warning:fall});
   }
 
   // Explicit local simulator action; chat/Bits transports never dispatch this method.
@@ -193,8 +210,8 @@ export class MatrixGame {
     }
     const attack = { eventId:event.messageId, notificationId:event.notificationId, actorId:event.actorId,
       cell, start:this.gameTime, due:this.gameTime + target.warning,
-      ...(target.cells ? {kind:target.kind,cells:[...target.cells]} : {}) };
-    const detail = {eventId:attack.eventId,cell,...(target.cells ? {kind:target.kind,cells:[...target.cells]} : {})};
+      ...(target.cells ? {kind:target.kind,cells:[...target.cells]} : {}), ...(target.variant ? {variant:target.variant} : {}) };
+    const detail = {eventId:attack.eventId,cell,...(target.cells ? {kind:target.kind,cells:[...target.cells]} : {}),...(target.variant ? {variant:target.variant} : {})};
     this.attacks.push(attack); this.emit('warning', detail);
     return { accepted:true, ...detail };
   }
@@ -209,15 +226,19 @@ export class MatrixGame {
     const caught = attack.kind === 'DROP' && point ? dropCaught(point.x, attack.cell - 3) : null;
     const inCells = attack.kind === 'DROP' ? caught === true : current !== null && (attack.cells ?? [attack.cell]).includes(current);
     const known = attack.kind === 'DROP' ? caught !== null : current !== null;
-    const outcome = !known ? 'UNKNOWN' : attack.kind === 'DROP' ? (inCells ? 'CATCH' : 'MISS') : inCells ? 'HIT' : 'DODGE';
+    const bomb = attack.variant === 'BOMB';
+    // Gold item: catching scores, missing costs nothing. Bomb: catching costs points, avoiding it earns a few.
+    const outcome = !known ? 'UNKNOWN' : attack.kind === 'DROP' ? (bomb ? (inCells ? 'BOMB' : 'AVOID') : (inCells ? 'CATCH' : 'MISS')) : inCells ? 'HIT' : 'DODGE';
     const hpBefore = this.hp, scoreBefore = this.score;
     if (outcome === 'HIT') this.hp = Math.max(0,this.hp-this.config.damage);
     if (outcome === 'DODGE') this.score += this.config.dodgeScore;
     if (outcome === 'CATCH') this.score += this.config.dropScore;
+    if (outcome === 'AVOID') this.score += this.config.avoidScore;
+    if (outcome === 'BOMB') this.score = Math.max(0, this.score - this.config.bombPenalty);
     const result = { eventId:attack.eventId, cell:attack.cell,
       ...(attack.cells ? {kind:attack.kind,cells:[...attack.cells]} : {}), outcome, sampledFrameId:frame?.frameId ?? null,
       sampledAt:atWall, hpDelta:this.hp-hpBefore, scoreDelta:this.score-scoreBefore,
-      ...(attack.kind === 'DROP' ? {sampledX:point ? point.x : null, caught} : {}) };
+      ...(attack.kind === 'DROP' ? {sampledX:point ? point.x : null, caught, ...(bomb ? {variant:'BOMB'} : {})} : {}) };
     this.recordResult(result);
     if (this.hp === 0) { this.mode='ROUND_END'; this.emit('status',{status:'ROUND_END'}); }
     return result;

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://id.twitch.tv https://api.twitch.tv wss://eventsub.wss.twitch.tv wss://irc-ws.chat.twitch.tv http://127.0.0.1:8080 ws://127.0.0.1:8080 http://127.0.0.1:8091 ws://127.0.0.1:8091; object-src 'none'; base-uri 'none'">
   <meta name="description" content="Streamer Mayhem: Twitch chat attacks, the streamer dodges.">
-  <title>Streamer Mayhem — Synthetic Arcade</title>
+  <title>Streamer Mayhem — Chat vs. Streamer</title>
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
@@ -20,16 +20,16 @@
       <section class="intro" aria-labelledby="page-title">
         <div class="intro-copy"><div class="eyebrow"><span class="tiny-square"></span> THE CHAT IS IN CONTROL <span class="line"></span> EPISODE 01</div>
           <h1 id="page-title">YOUR CHAT.<br><em>YOUR NEXT MOVE.</em></h1>
-          <p>Chat picks the attack. The streamer dodges.<br>One chat room, one nine-cell survival game.</p>
+          <p>Chat drops the gold and the bombs.<br>The streamer catches the gold and dodges the rest, just by leaning.</p>
         </div>
         <div class="intro-note"><span class="note-symbol">↘</span><span>BUILT FOR<br><b>UNPREDICTABLE<br>LIVE MOMENTS.</b></span></div>
       </section>
 
       <section class="workspace" id="arena-section" aria-label="Arena">
         <div class="arena-column">
-          <div class="section-head"><div><span class="section-index">01 / THE ARENA</span><h2>Matrix Dodge</h2></div><span class="simulation-badge"><i></i> Synthetic input</span></div>
+          <div class="section-head"><div><span class="section-index">01 / THE ARENA</span><h2>The Arena</h2></div><span class="simulation-badge"><i></i> Synthetic input</span></div>
           <div class="arena-frame">
-            <div class="arena-toolbar"><div><span class="arena-icon">✳</span> MATRIX DODGE <span class="toolbar-muted">/ ROUND 01</span></div><div class="toolbar-mode"><span class="live-dot"></span> SIMULATED<button id="fullscreen" class="fullscreen-button" type="button">Full screen</button></div></div>
+            <div class="arena-toolbar"><div><span class="arena-icon">✳</span> STREAMER MAYHEM <span class="toolbar-muted">/ ROUND 01</span></div><div class="toolbar-mode"><span class="live-dot"></span> SIMULATED<button id="fullscreen" class="fullscreen-button" type="button">Full screen</button></div></div>
             <div class="canvas-wrap"><canvas id="arena" width="1920" height="1080" tabindex="0" aria-label="Arena: click a position or use the arrow keys to move the synthetic character"></canvas></div><div class="canvas-caption"><span>MOVE TO DODGE</span><span>The character uses synthetic coordinates</span></div>
             <div class="arena-footer"><div class="footer-hint"><span class="keyboard-icon">↗</span><span><b>Click the arena</b> or use the arrow keys to move</span></div><div class="movement" aria-label="Move character"><button type="button" data-move="left" aria-label="Move left">←</button><button type="button" data-move="up" aria-label="Move up">↑</button><button type="button" data-move="down" aria-label="Move down">↓</button><button type="button" data-move="right" aria-label="Move right">→</button></div><button id="reset" class="reset-button" type="button">↻ <span>Restart</span></button></div>
           </div>
@@ -77,7 +77,8 @@
             <div id="throw-grid" class="throw-grid" aria-label="Simulated viewer throw"><button type="button" data-throw="1">1</button><button type="button" data-throw="2">2</button><button type="button" data-throw="3">3</button><button type="button" data-throw="4">4</button><button type="button" data-throw="5">5</button><button type="button" data-throw="6">6</button><button type="button" data-throw="7">7</button><button type="button" data-throw="8">8</button><button type="button" data-throw="9">9</button></div>
             <div class="command-or"><span></span> OR TYPE A COMMAND <span></span></div>
             <form id="chat-form" class="chat-form"><label for="chat-input" class="sr-only">Enter a simulated chat command</label><span>›</span><input id="chat-input" maxlength="100" placeholder="!throw 5" autocomplete="off"><button type="submit" aria-label="Send simulated command">↗</button></form>
-            <p id="command-feedback" class="command-feedback" role="status">Try !throw 1–9, !freeze, !mosquito or !lava</p>
+            <label class="check-row"><input id="auto-drops" type="checkbox"> Auto drops (random gold items and bombs, gets harder)</label>
+            <p id="command-feedback" class="command-feedback" role="status">Try !throw 1–9, !drop 1–3, !bomb 1–3, !freeze, !mosquito or !lava</p>
             </details>
             <details class="provider-settings"><summary>Advanced: connect with your own Twitch app (OAuth + EventSub)</summary>
               <p>Enter your own Twitch application details. They stay in this page's memory only. Register <code>http://localhost:4173/oauth-callback.html</code> as the OAuth redirect URL (Twitch accepts http only for localhost) and open this page at <code>http://localhost:4173/</code>.</p>
@@ -133,7 +134,7 @@
 
       <section class="how-to" id="how-to"><div class="how-title"><span class="section-index">03 / THE RULES</span><h2>Ready to play?</h2><p>Give chat a button.<br>Give the streamer half a second.</p></div><div class="how-step"><span>01</span><b>Chat attacks</b><p>Type <code>!throw 1</code> to <code>!throw 9</code> to pick the target cell.</p></div><div class="how-step"><span>02</span><b>Dodge the red warning</b><p>Click the arena or use the arrow keys to move to another cell.</p></div><div class="how-step"><span>03</span><b>Survive the round</b><p>Dodges score, hits cost HP. Press Restart to play again.</p></div></section>
     </main>
-    <footer><span>STREAMER MAYHEM <b>✦</b> MATRIX DODGE</span><span><span data-pose-label>SYNTHETIC POSE INPUT</span> · LIVE TWITCH CHAT</span><a href="#top">BACK TO TOP ↑</a></footer>
+    <footer><span>STREAMER MAYHEM <b>✦</b> CHAT VS STREAMER</span><span><span data-pose-label>SYNTHETIC POSE INPUT</span> · LIVE TWITCH CHAT</span><a href="#top">BACK TO TOP ↑</a></footer>
   </div>
   <script type="module" src="./app.mjs"></script>
 </body>

@@ -47,7 +47,7 @@ export function faceLandmarksToPoints(landmarks) {
   const cx=(minX+maxX)/2,cy=(minY+maxY)/2,center=toPoint({x:cx,y:cy,visibility:1});
   if(!center)return null;
   const nose=toPoint(landmarks[1]&&{x:landmarks[1].x,y:landmarks[1].y,visibility:1})??center;
-  return {points:{nose,torso:center,leftShoulder:null,rightShoulder:null},face:{cx,cy,fw:maxX-minX}};
+  return {points:{nose,torso:center,leftShoulder:null,rightShoulder:null},face:{cx,cy,fw:maxX-minX,fh:maxY-minY}};
 }
 
 const cellOf=p=>Math.min(2,Math.floor(p.y*3))*3+Math.min(2,Math.floor(p.x*3))+1;
@@ -108,7 +108,9 @@ export class CameraTracker {
       this.#set('ON');return true;
     } catch(error) {
       this.#teardown();
-      this.#set('FAILED',error?.name==='NotAllowedError'?'CAMERA_DENIED':error?.message==='CAMERA_UNSUPPORTED'?'CAMERA_UNSUPPORTED':'MODEL_FAILED');
+      const name=error?.name;
+      // NotReadableError is the usual live-stream case: OBS or a call app already has the camera.
+      this.#set('FAILED',name==='NotAllowedError'?'CAMERA_DENIED':['NotReadableError','AbortError','TrackStartError'].includes(name)?'CAMERA_BUSY':['NotFoundError','OverconstrainedError','DevicesNotFoundError'].includes(name)?'CAMERA_NOT_FOUND':error?.message==='CAMERA_UNSUPPORTED'?'CAMERA_UNSUPPORTED':'MODEL_FAILED');
       return false;
     }
   }

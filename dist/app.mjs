@@ -11,6 +11,7 @@ import { drawArena } from './arena_draw.mjs';
 import {AutoFrame} from './auto_frame.mjs';
 import {dropColumn,dropTarget,DROP_FLOOR} from './drop_lanes.mjs';
 import {CatchBurst,loadSprites} from './catch_fx.mjs';
+import {DropWaves} from './drop_waves.mjs';
 import {createCameraGeometry,centerCrop,projectCameraPoint,projectCameraFrame,canvasPointToSource,visiblePointToCanvas} from './camera_geometry.mjs';
 import {makeOverlayState,OVERLAY_CLOSED_TYPE} from './overlay_protocol.mjs';
 import {SyntheticFrameSource} from './frame_source.mjs';
@@ -34,6 +35,9 @@ function feed(title,detail) {
   while(list.children.length>3)list.lastElementChild.remove();
 }
 
+const waves=new DropWaves({seed:(Date.now()&0x7fffffff)||1});let waveSerial=0,roundEnding=false,banner=null;
+const autoDrops=document.querySelector('#auto-drops');
+autoDrops.addEventListener('change',()=>{waves.reset(performance.now());roundEnding=false;banner=null;feed(autoDrops.checked?'Auto drops on':'Auto drops off',autoDrops.checked?'Random gold items and bombs, rising difficulty':'Only chat starts drops');});
 const catchFx=new CatchBurst();let fxSprites={},lastMarker=null;
 loadSprites().then(sprites=>{fxSprites=sprites;});
 const game=new MatrixGame({onEvent:event=>{
@@ -44,7 +48,7 @@ const game=new MatrixGame({onEvent:event=>{
       const at={x:v.x+(dropTarget(column)??.5)*v.width,y:v.y+DROP_FLOOR*v.height};catchFx.spawn(at.x,at.y,performance.now(),size*.5);
     }
     lastEffect={outcome:event.outcome,at:performance.now(),scoreDelta:event.scoreDelta??0};
-    const titles={HIT:'Ouch, hit!',DODGE:'Nice dodge',CATCH:'Caught it!',MISS:'Missed it'};
+    const titles={HIT:'Ouch, hit!',DODGE:'Nice dodge',CATCH:'Caught it!',MISS:'Missed it',BOMB:'Boom! Bomb caught',AVOID:'Bomb dodged'};
     feed(titles[event.outcome]??'Undetermined',`${challengeNames[event.kind]??`Target cell ${event.cell}`} · ${event.outcome}`);
   } else if(event.type==='lavaBurn')feed('Lava burn',`HP ${event.hpDelta} · stand to avoid the lava`);
   else if(event.type==='ringOut')feed('Character left the arena','Out of bounds');
@@ -167,7 +171,7 @@ function syncCameraGeometry(){
   cameraGeometry=buildCameraGeometry(w,h);
   stabilizer.reset();game.invalidateTracking();frameSource.reset();
 }
-const GRACE_MS=400;let lastGood=null;
+const GRACE_MS=200;   // must stay below the game's 250 ms maxAge, otherwise an old position would be passed off as freshlet lastGood=null;
 const autoFrame=new AutoFrame();
 // Optional readout for real-camera tests: open the page with ?debug=1. It shows why a drop was UNKNOWN (low score, slow frames, no face).
 const debugStats={frames:0,since:performance.now(),fps:0,score:null,shownAt:0};
@@ -224,7 +228,7 @@ $('#camera-toggle').addEventListener('click',async()=>{
   const button=$('#camera-toggle');
   if(cameraOn||cameraTracker){cameraTracker?.stop();cameraTracker=null;autoFrame.reset();$('#camera-center').disabled=true;$('#camera-center-reset').disabled=true;cameraCrop=NO_CROP;$('#camera-zoom').disabled=true;$('#camera-zoom-reset').disabled=true;$('#camera-facing').disabled=false;$('#camera-kind').disabled=false;setCameraMode(false);$('#camera-status').textContent='Camera off. Keyboard or mouse input is used.';return;}
   button.disabled=true;$('#camera-status').textContent='Starting camera and loading the pose model…';
-  const labels={CAMERA_DENIED:'Camera permission was denied. Allow the camera for this page and try again.',CAMERA_UNSUPPORTED:'This browser cannot open a camera here. Use http://localhost:4173/.',MODEL_FAILED:'The pose model could not start.'};
+  const labels={CAMERA_DENIED:'Camera permission was denied. Allow the camera for this page and try again.',CAMERA_UNSUPPORTED:'This browser cannot open a camera here. Use http://localhost:4173/.',CAMERA_BUSY:'Another app (OBS, a call, another tab) is using this camera. Close it and try again.',CAMERA_NOT_FOUND:'No camera was found. Connect one and try again.',MODEL_FAILED:'The pose model could not start.'};
   const facing=$('#camera-facing').value,kind=$('#camera-kind').value;cameraMirror=$('#camera-mirror').checked;cameraKindLabel=kind==='face'?'CAMERA FACE TRACKING':'CAMERA POSE TRACKING';
   const tracker=new CameraTracker({video:$('#camera-video'),kind,facingMode:facing,onStatus:(status,detail)=>{if(status==='FAILED')$('#camera-status').textContent=labels[detail]??'Camera tracking failed.';}});
   const ok=await tracker.start();
@@ -259,13 +263,28 @@ $('#camera-zoom-reset').addEventListener('click',async()=>{
   $('#camera-status').textContent=result.ok?'Zoom reset to 1x.':(zoomMessages[result.reason]??'Zoom failed.');
 });
 function loop(){
-  const now=performance.now();if(cameraOn)pollCamera();else addSyntheticFrame();const snapshot=game.tick();
+  try{loopBody();}
+  catch(error){if(!loopFailed){loopFailed=true;console.error('ERROR frame loop',error);feed('Frame error','A frame failed; the game keeps running');}}
+  finally{animationId=requestAnimationFrame(loop);}
+}
+let loopFailed=false;
+function loopBody(){
+  const now=performance.now();if(cameraOn)pollCamera();else addSyntheticFrame();let snapshot=game.tick();
+  // Automatic waves (local game logic): irregular gold items and bombs while the round is playing and the box is ticked.
+  // A round is 75 s: after that no new drops start, and when the last one has landed the round ends with a summary banner.
+  if(autoDrops.checked&&waves.difficulty(now)>=1)roundEnding=true;
+  if(roundEnding&&snapshot.attacks.length===0){
+    roundEnding=false;autoDrops.checked=false;banner={text:`ROUND OVER · SCORE ${snapshot.score}`,at:now};feed('Round over',`Score ${snapshot.score}`);
+  }
+  if(autoDrops.checked&&!roundEnding&&snapshot.mode==='PLAYING'&&game.connection==='ONLINE'){
+    const next=waves.update(now,snapshot.attacks.length);
+    if(next){const id=`wave-${++waveSerial}`;game.receiveWaveDrop({notificationId:id,messageId:id,actorId:id,receivedAt:performance.now()},next);snapshot=game.tick();}
+  }
   const last=frameSource.lastFrame,anchor=cameraOn?(last?.torso??last?.nose??null):(last?.nose??null);
-  const drawn=drawArena(ctx,snapshot,anchor,{now,lastEffect,tracking:frameSource.running&&Boolean(anchor),geometry:cameraGeometry,
+  const drawn=drawArena(ctx,snapshot,anchor,{now,lastEffect,banner,tracking:frameSource.running&&Boolean(anchor),geometry:cameraGeometry,
     backdrop:cameraOn?drawCameraBackdrop:null,marker:cameraOn});lastMarker=drawn?.position??null;
   catchFx.draw(ctx,now,fxSprites,cameraGeometry?.visible??null);updateDebug(now,snapshot);updateScreen(snapshot);
   if(now-lastOverlayUpdate>=100){lastOverlayUpdate=now;publishOverlay(snapshot);}
-  animationId=requestAnimationFrame(loop);
 }
 
 function send(text){
@@ -455,15 +474,16 @@ $('#auth-mock-toggle').addEventListener('click',()=>{
 });
 window.addEventListener('message',event=>{popupController?.handleMessage(event);providerActivation?.handleMessage(event);});
 $('#reset').addEventListener('click',()=>{
-  game.reset();frameSource.reset();player.x=.5;player.y=.5;tracking=true;lastEffect=null;game.start();
+  game.reset();frameSource.reset();waves.reset(performance.now());roundEnding=false;banner=null;player.x=.5;player.y=.5;tracking=true;lastEffect=null;game.start();
   if(ircChat)game.setConnection(ircChat.status==='ONLINE');else if(providerActivation)game.setConnection(providerActivation.provider.transport.status==='ONLINE');else if(mockMode||chatMode)game.setConnection((chatMode?chatTransport:transport).status==='ONLINE');else adapter.ingest(syntheticWelcome());
   poseControls.spread=.1;poseControls.hip=.5;poseControls.leftWrist={x:.25,y:.55};poseControls.rightWrist={x:.75,y:.55};
   $('#elbow-spread').value='10';$('#elbow-value').textContent='10%';for(const id of ['elbow-known','wrist-known','hip-known'])$(`#${id}`).checked=true;
   addSyntheticFrame();game.tick();
-  $('#command-feedback').textContent='Try !throw 1–9, !freeze, !mosquito or !lava';feed('Round reset','HP and score reset');
+  $('#command-feedback').textContent='Try !throw 1–9, !drop 1–3, !bomb 1–3, !freeze, !mosquito or !lava';feed('Round reset','HP and score reset');
 });
 document.addEventListener('visibilitychange',()=>{
   if(document.hidden){frameSource.stop();if(game.mode==='PLAYING'||game.mode==='TRACKING_LOST'||game.mode==='RECOVERING')game.pause();feed('Game paused','Judging pauses while the page is hidden');const snapshot=game.tick();updateScreen(snapshot);publishOverlay(snapshot,{force:true});}
+  else{frameSource.start();stabilizer.reset();}   // back on screen: judging frames may flow again (the game itself still waits for Resume)
 });
 window.addEventListener('pagehide',()=>{stopOverlaySync();cancelAnimationFrame(animationId);transport.stop();chatTransport.stop();cameraTracker?.stop();popupController?.dispose();providerActivation?.stop();ircChat?.stop();oauth.clear();});
 

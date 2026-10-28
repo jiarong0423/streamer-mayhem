@@ -107,18 +107,18 @@ test('DROP-10 overlay protocol accepts a drop and rejects a forged one',async()=
 
 import {DROP_TARGETS,DROP_CATCH_HALF,DROP_START,DROP_FLOOR,dropTarget,dropCaught,dropColumn,dropY} from '../dist/drop_lanes.mjs';
 test('DROP-11 targets sit close to the middle and the catcher is about one face width wide',()=>{
-  assert.deepEqual([...DROP_TARGETS],[.35,.5,.65]);assert.equal(DROP_CATCH_HALF,.09);
+  assert.deepEqual([...DROP_TARGETS],[.35,.5,.65]);assert.equal(DROP_CATCH_HALF,.075);
   for(const [c,t] of [[1,.35],[2,.5],[3,.65]])assert.equal(dropTarget(c),t);
   for(const bad of [0,4,1.5,NaN,undefined])assert.equal(dropTarget(bad),null);
-  // The window is about six face widths wide: a catcher of 0.18 is about one face width, a side target is about 0.9 face widths from the middle.
-  assert.ok(Math.abs(2*DROP_CATCH_HALF*6-1.08)<.001);assert.ok(Math.abs((DROP_TARGETS[1]-DROP_TARGETS[0])*6-.9)<.001);
+  // The window is about six face widths wide: a catcher of 0.15 is about 0.9 of a face width, and so is the distance from the middle to a side target.
+  assert.ok(Math.abs(2*DROP_CATCH_HALF*6-.9)<.001);assert.ok(Math.abs((DROP_TARGETS[1]-DROP_TARGETS[0])*6-.9)<.001);
 });
-test('DROP-12 caught means the catcher covers the target; between targets or outside the window is not a catch / unknown',()=>{
-  assert.equal(dropCaught(.35,1),true);assert.equal(dropCaught(.35+.09,1),true);assert.equal(dropCaught(.35+.0901,1),false);assert.equal(dropCaught(.35-.0901,1),false);
+test('DROP-12 caught means the catcher covers the target; the zones of neighbouring targets meet without overlapping, and outside the window is unknown',()=>{
+  assert.equal(dropCaught(.35,1),true);assert.equal(dropCaught(.35+.075,1),true);assert.equal(dropCaught(.35+.0751,1),false);assert.equal(dropCaught(.35-.0751,1),false);
   assert.equal(dropCaught(.5,2),true);assert.equal(dropCaught(.5,1),false);assert.equal(dropCaught(.65,3),true);assert.equal(dropCaught(.5,3),false);
   for(const bad of [-.01,1.01,NaN,undefined,null,'0.5'])assert.equal(dropCaught(bad,2),null);
   assert.equal(dropCaught(.5,9),null);
-  assert.equal(dropColumn(.35),1);assert.equal(dropColumn(.5),2);assert.equal(dropColumn(.65),3);assert.equal(dropColumn(.42),1);assert.equal(dropColumn(.43),2);assert.equal(dropColumn(.2),null);assert.equal(dropColumn(NaN),null);
+  assert.equal(dropColumn(.35),1);assert.equal(dropColumn(.5),2);assert.equal(dropColumn(.65),3);assert.equal(dropColumn(.42),1);assert.equal(dropColumn(.424),1);assert.equal(dropColumn(.43),2);assert.equal(dropColumn(.4251),2);assert.equal(dropColumn(.58),3);assert.equal(dropColumn(.2749),null);assert.equal(dropColumn(.2),null);assert.equal(dropColumn(NaN),null);
 });
 test('DROP-13 judging uses left/right only: height never matters, a missing or out-of-window x is unknown',()=>{
   for(const y of [-5,.5,5]){
@@ -137,4 +137,44 @@ test('DROP-14 the item starts above the window and lands near the bottom',()=>{
   assert.ok(DROP_START<0);assert.ok(DROP_FLOOR>.85&&DROP_FLOOR<1);
   assert.equal(dropY(0),DROP_START);assert.equal(dropY(1),DROP_FLOOR);assert.equal(dropY(-1),DROP_START);assert.equal(dropY(5),DROP_FLOOR);
   assert.ok(dropY(.5)>dropY(.25)&&dropY(.75)>dropY(.5));
+});
+
+import {parseMatrixCommand,parseBombCommand,cleanCommand} from '../dist/matrix.mjs';
+import {makeOverlayState} from '../dist/overlay_protocol.mjs';
+test('DROP-15 invisible padding Twitch adds to a repeated message does not break a command',()=>{
+  const pad=['\u{E0000}','​','‍','﻿','⁠','\u{E0020}'];
+  for(const p of pad){
+    assert.equal(parseDropCommand(`!drop 2${p}`),2,JSON.stringify(p));assert.equal(parseBombCommand(`!bomb 3${p}`),3);assert.equal(parseMatrixCommand(`!throw 5${p}`),5);
+    assert.equal(parseDropCommand(`${p}!drop 1`),1);
+  }
+  assert.equal(parseMatrixCommand('!throw 5'),5);assert.equal(cleanCommand('\u{E0000}x y​'),'x y');
+  assert.equal(parseDropCommand('!drop 2 \u{E0000}extra'),null);assert.equal(parseDropCommand('!dr​op 2'),2);   // removing the invisible character is the intent; a visible extra word is still rejected
+});
+test('DROP-16 wave drops: fall time is bounded, bad input is refused and a good one is accepted',()=>{
+  const s=setup();s.feed(100,{x:.5,y:.5,visibility:1});
+  const send=(fall,column=2,variant,n)=>s.game.receiveWaveDrop({notificationId:`w${n}`,messageId:`w${n}`,actorId:`w${n}`,receivedAt:s.clock.now},{column,variant,fall});
+  for(const [i,fall] of [1e308,Infinity,NaN,-5,0,99,10001].entries())assert.equal(send(fall,2,undefined,i).accepted,false,`fall ${fall}`);
+  assert.equal(send(5000,0,undefined,20).accepted,false);assert.equal(send(5000,2,'GOLD',21).accepted,false);
+  const ok=send(2500,2,undefined,22);assert.equal(ok.accepted,true);
+  s.feed(s.clock.now+1000,{x:.5,y:.5,visibility:1});assert.equal(send(2500,3,'BOMB',23).variant,'BOMB');
+});
+test('DROP-17 bomb outcomes: catching costs points (not below zero), avoiding earns a few',()=>{
+  const s=setup();s.feed(100,{x:.5,y:.5,visibility:1});s.send('!bomb 2');
+  s.feed(s.clock.now+s.game.config.dropFall+200,{x:.5,y:.5,visibility:1});
+  let r=s.game.snapshot().lastResult;assert.equal(r.outcome,'BOMB');assert.equal(r.variant,'BOMB');assert.equal(s.game.score,0);assert.equal(s.game.hp,100);
+  const t=setup();t.feed(100,{x:.5,y:.5,visibility:1});t.send('!bomb 1');
+  t.feed(t.clock.now+t.game.config.dropFall+200,{x:.5,y:.5,visibility:1});
+  r=t.game.snapshot().lastResult;assert.equal(r.outcome,'AVOID');assert.equal(r.scoreDelta,t.game.config.avoidScore);
+  const u=setup();u.feed(100,{x:.5,y:.5,visibility:1});u.send('!drop 2');u.feed(u.clock.now+u.game.config.dropFall+200,{x:.5,y:.5,visibility:1});
+  assert.equal(u.game.score,25);u.feed(u.clock.now+500,{x:.5,y:.5,visibility:1});u.send('!bomb 2','other');u.feed(u.clock.now+u.game.config.dropFall+200,{x:.5,y:.5,visibility:1});
+  assert.equal(u.game.snapshot().lastResult.scoreDelta,-25);assert.equal(u.game.score,0);
+});
+test('DROP-18 a forged overlay drop without cells, with a bad variant or out-of-range progress is refused',()=>{
+  const session='a'.repeat(32),geometry=createCameraGeometry({canvasWidth:1280,canvasHeight:720,viewport:{x:0,y:0,width:1280,height:720},sourceWidth:1280,sourceHeight:720});
+  const make=attack=>makeOverlayState({session,sequence:1,geometry,snapshot:{mode:'PLAYING',attacks:[attack]},sourcePoint:null});
+  assert.throws(()=>make({cell:5,kind:'DROP'}),/INVALID_OVERLAY_STATE/);
+  assert.throws(()=>make({cell:5,kind:'DROP',cells:[2,5,8],progress:.5,variant:'EVIL'}),/INVALID_OVERLAY_STATE/);
+  assert.throws(()=>make({cell:5,kind:'DROP',cells:[2,5,8],progress:2}),/INVALID_OVERLAY_STATE/);
+  const bomb=make({cell:5,kind:'DROP',cells:[2,5,8],progress:.5,variant:'BOMB'});assert.equal(bomb.snapshot.attacks[0].variant,'BOMB');
+  assert.deepEqual(make({cell:5}).snapshot.attacks,[{cell:5}]);
 });

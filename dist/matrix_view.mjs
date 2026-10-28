@@ -73,13 +73,26 @@ export function drawCameraOverlay(ctx,geometry,snapshot,{clear=true,grid=false}=
       // Catch mode: a small golden orb falls from above the window to its target x near the bottom; the streamer's catcher (drawn by the arena) must cover it.
       // A faint guide line, a landing ring the width of the catcher, a short trail and a glow keep it readable without hiding the face.
       const target=dropTarget(attack.cell-3);if(target===null)continue;
+      const bomb=attack.variant==='BOMB',hue=bomb?'255,107,90':'217,249,101';
       const cx=rect.x+target*rect.width,radius=Math.max(4,Math.min(rect.width/36,rect.height/22)),p=Math.max(0,Math.min(1,attack.progress??0));
       const y=rect.y+dropY(p)*rect.height,floor=rect.y+DROP_FLOOR*rect.height,ringHalf=DROP_CATCH_HALF*rect.width;
       const guide=ctx.createLinearGradient(0,rect.y,0,floor);
-      guide.addColorStop(0,'rgba(217,249,101,0)');guide.addColorStop(1,'rgba(217,249,101,.28)');
+      guide.addColorStop(0,`rgba(${hue},0)`);guide.addColorStop(1,`rgba(${hue},.28)`);
       ctx.fillStyle=guide;ctx.fillRect(cx-Math.max(1,radius/6),rect.y,Math.max(2,radius/3),floor-rect.y);
-      ctx.strokeStyle=`rgba(217,249,101,${(.3+.5*p).toFixed(3)})`;ctx.lineWidth=Math.max(1.5,radius/4);
+      ctx.strokeStyle=`rgba(${hue},${(.3+.5*p).toFixed(3)})`;ctx.lineWidth=Math.max(1.5,radius/4);
       ctx.beginPath();ctx.ellipse(cx,floor+radius*.4,ringHalf*(1.15-.15*p),radius*(1.0-.3*p),0,0,2*Math.PI);ctx.stroke();
+      if(bomb){
+        // A bomb: dark core with a red glow and short spikes, so it reads as "keep away" at a glance and never as a gold item.
+        const glow=ctx.createRadialGradient(cx,y,radius*.3,cx,y,radius*2.6);
+        glow.addColorStop(0,'rgba(255,90,70,.55)');glow.addColorStop(1,'rgba(255,90,70,0)');
+        ctx.fillStyle=glow;ctx.beginPath();ctx.arc(cx,y,radius*2.6,0,2*Math.PI);ctx.fill();
+        ctx.strokeStyle='#3a1414';ctx.lineWidth=Math.max(2,radius/4);ctx.lineCap='round';
+        for(let k=0;k<8;k++){const a=k*Math.PI/4+p*2;ctx.beginPath();ctx.moveTo(cx+Math.cos(a)*radius*.9,y+Math.sin(a)*radius*.9);ctx.lineTo(cx+Math.cos(a)*radius*1.5,y+Math.sin(a)*radius*1.5);ctx.stroke();}
+        const core=ctx.createRadialGradient(cx-radius*.3,y-radius*.35,radius*.1,cx,y,radius);
+        core.addColorStop(0,'#7a3a3a');core.addColorStop(.6,'#2a1313');core.addColorStop(1,'#120808');
+        ctx.fillStyle=core;ctx.beginPath();ctx.arc(cx,y,radius,0,2*Math.PI);ctx.fill();
+        ctx.strokeStyle='#ff6b5a';ctx.lineWidth=Math.max(1.5,radius/6);ctx.beginPath();ctx.arc(cx,y,radius,0,2*Math.PI);ctx.stroke();
+      }else{
       for(let i=3;i>=1;i--){ctx.fillStyle=`rgba(255,210,63,${(.09*(4-i)).toFixed(3)})`;ctx.beginPath();ctx.arc(cx,y-i*radius*1.1,radius*(1-.2*i),0,2*Math.PI);ctx.fill();}
       const glow=ctx.createRadialGradient(cx,y,radius*.2,cx,y,radius*2.8);
       glow.addColorStop(0,'rgba(255,214,90,.5)');glow.addColorStop(1,'rgba(255,214,90,0)');
@@ -87,6 +100,7 @@ export function drawCameraOverlay(ctx,geometry,snapshot,{clear=true,grid=false}=
       const orb=ctx.createRadialGradient(cx-radius*.35,y-radius*.4,radius*.1,cx,y,radius);
       orb.addColorStop(0,'#fff6bf');orb.addColorStop(.55,'#ffd23f');orb.addColorStop(1,'#e59a14');
       ctx.fillStyle=orb;ctx.beginPath();ctx.arc(cx,y,radius,0,2*Math.PI);ctx.fill();
+      }
       continue;
     }
     // Attack: only the targeted cells light up, with a soft rounded fill and the cell number, so no grid is needed on screen.

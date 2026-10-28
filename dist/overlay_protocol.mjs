@@ -8,12 +8,13 @@ const SESSION=/^[a-f0-9]{32}$/;
 const MODES=new Set(['IDLE','PLAYING','PAUSED','TRACKING_LOST','RECOVERING','ROUND_END']);
 function renderAttack(attack) {
   if(!attack || !Number.isInteger(attack.cell) || attack.cell<1 || attack.cell>9)throw new Error('INVALID_OVERLAY_STATE');
-  if(attack.cells===undefined)return {cell:attack.cell};
   if(attack.kind==='DROP'){
     const column=attack.cell-3;
     if(!Number.isInteger(column)||column<1||column>3||!Array.isArray(attack.cells)||attack.cells.length!==3||attack.cells.some((cell,i)=>cell!==column+i*3)||!Number.isFinite(attack.progress)||attack.progress<0||attack.progress>1)throw new Error('INVALID_OVERLAY_STATE');
-    return {cell:attack.cell,kind:'DROP',cells:[...attack.cells],progress:attack.progress};
+    if(attack.variant!==undefined&&attack.variant!=='BOMB')throw new Error('INVALID_OVERLAY_STATE');
+    return {cell:attack.cell,kind:'DROP',cells:[...attack.cells],progress:attack.progress,...(attack.variant?{variant:attack.variant}:{})};
   }
+  if(attack.cells===undefined)return {cell:attack.cell};
   if(attack.cell!==5 || !Array.isArray(attack.cells) || attack.cells.length!==CROSS_CELLS.length ||
     attack.cells.some((cell,i)=>cell!==CROSS_CELLS[i]))throw new Error('INVALID_OVERLAY_STATE');
   return {cell:5,cells:[...CROSS_CELLS]};
@@ -57,7 +58,11 @@ function renderSnapshot(snapshot){
   if(!snapshot||!MODES.has(snapshot.mode)||!Array.isArray(snapshot.attacks)||snapshot.attacks.length>8)return error();
   const playing=snapshot.mode==='PLAYING',attacks=snapshot.attacks.map(renderAttack),freeze=renderFreeze(snapshot.freeze,playing),action=renderAction(snapshot.actionGame,playing);
   if(freeze&&action||((freeze||action)&&attacks.length))return error();
-  return {mode:snapshot.mode,attacks:playing?attacks:[],...(freeze?{freeze}:{}),...(action?{actionGame:action}:{})};
+  // Score and health are optional display numbers for the stream HUD; if present they must be finite and in range.
+  const hud={};
+  if(snapshot.score!==undefined)hud.score=number(snapshot.score,0,1e6);
+  if(snapshot.hp!==undefined)hud.hp=number(snapshot.hp,0,100);
+  return {mode:snapshot.mode,attacks:playing?attacks:[],...hud,...(freeze?{freeze}:{}),...(action?{actionGame:action}:{})};
 }
 export function parseOverlayQuery(search) {
   const q=new URLSearchParams(search);

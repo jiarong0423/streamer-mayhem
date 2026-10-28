@@ -47,3 +47,10 @@ test('AUTO-06 reset and adopt manage the reference; bad faces are ignored',()=>{
   for(const bad of [null,undefined,{cx:NaN,cy:.5,fw:.2},{cx:.5,cy:.5,fw:0}]){const b=new AutoFrame({frames:1});assert.equal(b.update(bad,0),null);}
   assert.throws(()=>new AutoFrame({frames:0}),RangeError);assert.throws(()=>new AutoFrame({low:1.2}),RangeError);
 });
+
+test('AUTO-07 turning the head (narrower face, same height) does not re-frame; moving closer or farther (height changes) does',()=>{
+  const a=new AutoFrame({frames:1,holdMs:500});a.update({cx:.5,cy:.45,fw:.16,fh:.28},0);
+  for(let t=33;t<5000;t+=33)assert.equal(a.update({cx:.5,cy:.45,fw:.07,fh:.28},t),null);       // yaw: width halves, height unchanged
+  a.update({cx:.5,cy:.45,fw:.16,fh:.5},6000);
+  assert.ok(a.update({cx:.5,cy:.45,fw:.16,fh:.5},6600),'face got much taller: re-frame');
+});

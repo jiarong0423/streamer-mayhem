@@ -11,7 +11,9 @@ export class AutoFrame {
   }
   reset(){this.streak=0;this.reference=null;this.offSince=null;}
   // Marks the face width the current crop was built for (also used after a manual "Center me").
-  adopt(face){this.reference=face&&face.fw>0?face.fw:null;this.streak=0;this.offSince=null;}
+  // The size reference is the face height when known: turning the head narrows the face but not its height, so a head turn must not look like moving away.
+  static size(face){return face&&(face.fh>0?face.fh:face.fw>0?face.fw:null);}
+  adopt(face){this.reference=AutoFrame.size(face);this.streak=0;this.offSince=null;}
   // Call once per fresh camera frame with the latest face ({cx,cy,fw} normalized to the source frame) or null. Returns a crop to apply, or null.
   update(face,now) {
     const usable=face&&[face.cx,face.cy,face.fw].every(finite)&&face.fw>0;
@@ -21,7 +23,7 @@ export class AutoFrame {
       const crop=centerCrop(face,this.span);this.adopt(face);return crop;
     }
     if(!usable){this.offSince=null;return null;}
-    const ratio=face.fw/this.reference;
+    const ratio=AutoFrame.size(face)/this.reference;
     if(ratio>=this.low&&ratio<=this.high){this.offSince=null;return null;}
     if(this.offSince===null){this.offSince=now;return null;}
     if(now-this.offSince<this.holdMs)return null;

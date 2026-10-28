@@ -181,3 +181,12 @@ test('LANDMARK-04 an empty landmark result is a fresh frame with no person; the 
   const t2=new CameraTracker({video:video2,kind:'face',loadVision:async()=>broken,mediaDevices:media().mediaDevices});
   assert.equal(await t2.start(),true);assert.equal(t2.faceEngine,'detector');video2.currentTime=.1;assert.ok(t2.poll().points.torso);
 });
+
+test('CAMERA-ERR camera failures are named: denied, busy (OBS has it), not found, unsupported, model',async()=>{
+  const cases=[['NotAllowedError','CAMERA_DENIED'],['NotReadableError','CAMERA_BUSY'],['AbortError','CAMERA_BUSY'],['NotFoundError','CAMERA_NOT_FOUND'],['OverconstrainedError','CAMERA_NOT_FOUND'],['SomethingElse','MODEL_FAILED']];
+  for(const [name,expected] of cases){
+    const seen=[];const err=new Error('x');err.name=name;
+    const t=new CameraTracker({video:fakeVideo(),kind:'face',onStatus:(s,d)=>seen.push([s,d]),loadVision:async()=>({}),mediaDevices:{getUserMedia:async()=>{throw err;}}});
+    assert.equal(await t.start(),false,name);assert.deepEqual(seen.at(-1),['FAILED',expected],name);
+  }
+});
