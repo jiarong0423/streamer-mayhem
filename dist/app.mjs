@@ -48,6 +48,16 @@ const mosquito=new FaceMosquito({seed:(Date.now()&0x7fffffff)||1});
 const probe=new MotionProbe(),probeCanvas=document.createElement('canvas');probeCanvas.width=64;probeCanvas.height=36;
 const probeCtx=probeCanvas.getContext('2d',{willReadFrequently:true});
 let probeFailed=false;
+const swatTest=document.querySelector('#swat-test');let swatPeak=0,swatRun=0;
+swatTest.addEventListener('change',()=>{if(!swatTest.checked)$('#swat-meter').hidden=true;swatPeak=0;swatRun=0;});
+// Live swat sensor bar: the mark is the level a swat needs (0.28); the bar turns orange after two new frames at or above it.
+function showSwat(level){
+  const m=$('#swat-meter');if(!m)return;
+  m.hidden=!(swatTest.checked&&cameraOn);if(m.hidden)return;
+  swatPeak=Math.max(swatPeak*.97,level);swatRun=level>=.28?swatRun+1:0;
+  $('#swat-fill').style.width=`${Math.min(100,level*100)}%`;$('#swat-fill').classList.toggle('hit',swatRun>=2);
+  $('#swat-text').textContent=`${level.toFixed(2)}  peak ${swatPeak.toFixed(2)}${swatRun>=2?'  SWAT!':''}`;
+}
 let swatFrames=0,biteAt=-Infinity,mosquitoPlanned=false,lastProbeTime=-1,nextMosquitoTry=0;
 if(debugOnEarly())window.__mosqLog=[];
 function debugOnEarly(){return new URLSearchParams(location.search).has('debug');}
@@ -77,16 +87,16 @@ function motionLevelAt(p,r){
     lastProbeTime=video.currentTime;
     probeCtx.drawImage(video,0,0,64,36);
     const gray=grayFromRgba(probeCtx.getImageData(0,0,64,36).data,64,36);if(gray)probe.push(gray);
-    const c=canvasPointToSource(visiblePointToCanvas({x:p.x,y:p.y},cameraGeometry),cameraGeometry);
+    const c=canvasPointToSource(visiblePointToCanvas({x:Math.max(.02,Math.min(.98,p.x)),y:Math.max(.02,Math.min(.98,p.y))},cameraGeometry),cameraGeometry);   // a mosquito at the very edge is still looked for
     return c?probe.level({x:c.x,y:c.y,r:r*(1-cameraGeometry.crop.left-cameraGeometry.crop.right)}):0;
   }catch(error){if(!probeFailed){probeFailed=true;console.error('ERROR motion probe',error);}return 0;}   // a failed read must not freeze the mosquito
 }
 // With ?debug=1 the face motion is measured all the time (no mosquito needed) so a slap, a clap or a wave can be seen and the threshold calibrated.
 function debugFaceMotion(now){
-  if(!debugOn||!cameraOn||mosquito.active)return;
+  if((!debugOn&&!swatTest.checked)||!cameraOn||mosquito.active)return;
   const face=currentFace();if(!face)return;
   const level=motionLevelAt(face,face.w);if(level===null)return;
-  debugStats.level=level;debugStats.peak=Math.max(debugStats.peak*.97,level);
+  showSwat(level);debugStats.level=level;debugStats.peak=Math.max(debugStats.peak*.97,level);
   if(window.__mosqLog&&window.__mosqLog.length<4000)window.__mosqLog.push([Math.round(now),+level.toFixed(3),'FACE',+face.x.toFixed(3),+face.y.toFixed(3)]);
 }
 function stepMosquito(now,snapshot){
@@ -95,7 +105,7 @@ function stepMosquito(now,snapshot){
   const snap=mosquito.snapshot(now);let level=0;
   if(swatFrames>0){swatFrames--;level=1;}                                   // the on-screen Swat button (no camera needed)
   else if(cameraOn&&cameraGeometry)level=motionLevelAt(snap.probe,snap.probe.r);
-  if(level!==null){debugStats.level=level;debugStats.peak=Math.max(debugStats.peak*.97,level);if(window.__mosqLog&&window.__mosqLog.length<4000)window.__mosqLog.push([Math.round(now),+level.toFixed(3),snap.state,+snap.x.toFixed(3),+snap.y.toFixed(3)]);}
+  if(level!==null){showSwat(level);debugStats.level=level;debugStats.peak=Math.max(debugStats.peak*.97,level);if(window.__mosqLog&&window.__mosqLog.length<4000)window.__mosqLog.push([Math.round(now),+level.toFixed(3),snap.state,+snap.x.toFixed(3),+snap.y.toFixed(3)]);}
   const result=mosquito.update(now,currentFace(),level);
   if(result){
     game.setFaceMosquitoBusy(false);

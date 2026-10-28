@@ -11,34 +11,44 @@ export function grayFromRgba(rgba,width,height){
 }
 
 export class MotionProbe {
-  constructor({width=64,height=36,threshold=24,globalLimit=.7}={}) {
+  constructor({width=64,height=36,threshold=24,globalLimit=.7,ringWeight=.7}={}) {
     if(!Number.isInteger(width)||!Number.isInteger(height)||width<8||height<8||!(threshold>0&&threshold<256)||!(globalLimit>0&&globalLimit<=1))throw new RangeError('INVALID_PROBE');
-    Object.assign(this,{width,height,threshold,globalLimit});this.reset();
+    if(!(ringWeight>=0&&ringWeight<=1.5))throw new RangeError('INVALID_PROBE');
+    Object.assign(this,{width,height,threshold,globalLimit,ringWeight});this.reset();
   }
   reset(){this.prev=null;this.changed=null;this.globalChange=0;}
   // `gray` is width*height luminance bytes. The first frame only seeds the comparison.
+  // The average brightness change of the whole frame (auto-exposure, a light turning on, a hand shadow over the lens) is subtracted before comparing,
+  // so only change that differs from it counts as motion.
   push(gray){
     if(!gray||gray.length!==this.width*this.height)return false;
     if(this.prev){
-      const n=gray.length,changed=new Uint8Array(n);let count=0;
-      for(let i=0;i<n;i++){if(Math.abs(gray[i]-this.prev[i])>=this.threshold){changed[i]=1;count++;}}
+      const n=gray.length;let sum=0;
+      for(let i=0;i<n;i++)sum+=gray[i]-this.prev[i];
+      const shift=sum/n,changed=new Uint8Array(n);let count=0;
+      for(let i=0;i<n;i++){if(Math.abs(gray[i]-this.prev[i]-shift)>=this.threshold){changed[i]=1;count++;}}
       this.changed=changed;this.globalChange=count/n;
     }
     this.prev=Uint8Array.from(gray);return true;
   }
-  // Fraction (0..1) of pixels inside the circle (cx,cy,r in normalized 0..1, r in units of the width) that changed.
-  // A change over most of the frame is lighting or camera shake, not a hand, and reads as 0.
-  level({x,y,r}){
-    if(!this.changed||![x,y,r].every(finite)||!(r>0)||this.globalChange>this.globalLimit)return 0;
-    const w=this.width,h=this.height,cx=x*w,cy=y*h,rad=r*w;
-    let inside=0,hit=0;
-    for(let py=Math.max(0,Math.floor(cy-rad));py<=Math.min(h-1,Math.ceil(cy+rad));py++){
-      for(let px=Math.max(0,Math.floor(cx-rad));px<=Math.min(w-1,Math.ceil(cx+rad));px++){
-        const dx=px+.5-cx,dy=py+.5-cy;
-        if(dx*dx+dy*dy>rad*rad)continue;
+  #fraction(cx,cy,rIn,rOut){
+    const w=this.width,h=this.height;let inside=0,hit=0;
+    for(let py=Math.max(0,Math.floor(cy-rOut));py<=Math.min(h-1,Math.ceil(cy+rOut));py++){
+      for(let px=Math.max(0,Math.floor(cx-rOut));px<=Math.min(w-1,Math.ceil(cx+rOut));px++){
+        const dx=px+.5-cx,dy=py+.5-cy,d2=dx*dx+dy*dy;
+        if(d2>rOut*rOut||d2<rIn*rIn)continue;
         inside++;if(this.changed[py*w+px])hit++;
       }
     }
     return inside?hit/inside:0;
+  }
+  // Motion in the circle (x,y,r in normalized 0..1, r in units of the width) minus 0.7 of the motion in the ring just around it.
+  // Something moving over the whole neighbourhood (a person walking behind, camera noise, the head turning) is in both, a hand swatting at the
+  // spot is mostly inside the circle. A change over most of the frame (even after the brightness compensation) is shake, not a hand, and reads as 0.
+  level({x,y,r}){
+    if(!this.changed||![x,y,r].every(finite)||!(r>0)||this.globalChange>this.globalLimit)return 0;
+    const cx=x*this.width,cy=y*this.height,rad=r*this.width;
+    const inner=this.#fraction(cx,cy,0,rad),ring=this.#fraction(cx,cy,rad,rad*1.7);
+    return Math.max(0,inner-this.ringWeight*ring);
   }
 }

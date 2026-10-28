@@ -53,6 +53,8 @@
               <div class="provider-actions"><button id="camera-center" type="button" disabled>Center me (small-range play)</button><button id="camera-center-reset" type="button" disabled>Reset view</button></div>
               <p id="camera-status" role="status">Camera off. Keyboard or mouse input is used.</p>
               <p id="camera-debug" class="camera-debug" hidden></p>
+              <label class="check-row"><input id="swat-test" type="checkbox"> Swat sensor test: slap or clap in front of your face and watch the bar</label>
+              <div id="swat-meter" class="swat-meter" hidden><div class="swat-bar"><i id="swat-fill"></i><b class="swat-mark" title="needs this much for a swat"></b></div><span id="swat-text">0.00</span></div>
               <video id="camera-video" playsinline muted style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"></video>
             </details>
 
