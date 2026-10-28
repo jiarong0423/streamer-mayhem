@@ -4,7 +4,7 @@
 
 1. `node scripts/serve-local.mjs`, open `http://localhost:4173/`.
 2. In **Connect to Twitch chat without login**, type the channel name and press **Connect without login (read-only)**.
-3. When the status shows `Live chat connected`, any viewer typing `!throw 5` in that channel's chat triggers an attack. This path is read-only and uses an anonymous `justinfan` IRC identity: no account, token or Twitch application.
+3. When the status shows `Live chat connected`, any viewer typing `!drop 2` (a gold item) or `!bomb 1` (a bomb) in that channel's chat triggers an attack. This path is read-only and uses an anonymous `justinfan` IRC identity: no account, token or Twitch application.
 
 ## Option B: OAuth + EventSub
 
@@ -23,7 +23,7 @@ You need a Twitch account (with two-factor authentication enabled, which Twitch 
 1. `node scripts/serve-local.mjs`, then open `http://localhost:4173/` (use `localhost`, not `127.0.0.1`, so the origin matches the registered redirect URL).
 2. In **Connect to Twitch**, enter the client ID, broadcaster ID and the callback URL from step 1.
 3. Click **Authorize and subscribe**. A Twitch consent popup asks for the `user:read:chat` scope. Approve it with the broadcaster account.
-4. When the status shows connected, type `!throw 5` (or `!freeze`, `!mosquito`, `!lava`; Cross Inferno is started from the controller button, not by chat) in your Twitch chat. The arena reacts and the warning appears on the overlay.
+4. When the status shows connected, type `!drop 2`, `!bomb 1` or `!mosquito` (`!throw 1-9`, `!freeze` and `!lava` still work as extra modes) in your Twitch chat. The arena reacts and the warning appears on the overlay.
 5. Optional: press **Turn on camera tracking** and allow the camera; stand back so your head and shoulders are in view and keep the camera fixed (16:9, landscape).
 6. Open the overlay link shown on the controller page as an OBS Browser Source (1920x1080, transparent background) above your camera.
 
