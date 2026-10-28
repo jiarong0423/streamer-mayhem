@@ -1,4 +1,5 @@
-import { MatrixGame } from './matrix.mjs';
+import { MatrixGame, gradeFor } from './matrix.mjs';
+import { createSfx } from './sfx.mjs';
 import { EventSubAdapter, syntheticChat, syntheticWelcome } from './eventsub_adapter.mjs';
 import { MockEventSubTransport } from './mock_eventsub_transport.mjs';
 import { MockOAuth } from './mock_oauth.mjs';
@@ -12,7 +13,7 @@ import {AutoFrame} from './auto_frame.mjs';
 import {dropColumn,dropTarget,DROP_FLOOR} from './drop_lanes.mjs';
 import {CatchBurst,loadSprites} from './catch_fx.mjs';
 import {DropWaves} from './drop_waves.mjs';
-import {FaceMosquito} from './face_mosquito.mjs';
+import {FaceMosquito,mosquitoDistance} from './face_mosquito.mjs';
 import {MotionProbe,grayFromRgba} from './motion_probe.mjs';
 import {createCameraGeometry,centerCrop,projectCameraPoint,projectCameraFrame,canvasPointToSource,visiblePointToCanvas} from './camera_geometry.mjs';
 import {makeOverlayState,OVERLAY_CLOSED_TYPE} from './overlay_protocol.mjs';
@@ -37,11 +38,21 @@ function feed(title,detail) {
   while(list.children.length>3)list.lastElementChild.remove();
 }
 
+// Sound: synthesised in sfx.mjs, muted until the streamer clicks the sound button (browsers need a click, and a stream should never start noisy).
+// ?sfx=0 disables it (when the OBS overlay carries the sound instead); ?keepalive=1 keeps it running while the tab is hidden.
+const pageParams=new URLSearchParams(location.search);
+function safeStorage(){try{return window.localStorage;}catch{return null;}}
+const sfx=createSfx({storage:safeStorage(),keepAlive:pageParams.get('keepalive')==='1'});
+const soundDisabled=pageParams.get('sfx')==='0';
+const OUTCOME_SOUND={CATCH:'catch',MISS:'miss',BOMB:'bomb',AVOID:'avoid',HIT:'hit',DODGE:'dodge',SWAT:'swat',BITE:'bite'};   // UNKNOWN makes no sound
+const warnedBombs=new Set();
+// Mosquito tutorial: the first mosquito of a round is a demonstration (its bite costs nothing); hints show until the first successful swat.
+let mosquitoCount=0,mosquitoDemo=false,swatLearned=false,landedHinted=false,mosquitoHint=null;
 const waves=new DropWaves({seed:(Date.now()&0x7fffffff)||1});let waveSerial=0,roundEnding=false,banner=null;
 const autoDrops=document.querySelector('#auto-drops');
 $('#face-mosquito').addEventListener('click',()=>{startFaceMosquito();});
 $('#swat').addEventListener('click',()=>{swatFrames=3;});
-autoDrops.addEventListener('change',()=>{waves.reset(performance.now());roundEnding=false;banner=null;mosquitoPlanned=false;feed(autoDrops.checked?'Auto drops on':'Auto drops off',autoDrops.checked?'Random gold items and bombs, rising difficulty':'Only chat starts drops');});
+autoDrops.addEventListener('change',()=>{waves.reset(performance.now());roundEnding=false;banner=null;mosquitoHint=null;mosquitoPlanned=false;mosquitoCount=0;if(autoDrops.checked)sfx.play('roundStart');if(!autoDrops.checked&&session.phase==='running')session.phase='over';syncStart();feed(autoDrops.checked?'Auto drops on':'Auto drops off',autoDrops.checked?'Random gold items and bombs, rising difficulty':'Only chat starts drops');});
 const catchFx=new CatchBurst();let fxSprites={},lastMarker=null;
 // The mosquito that goes for the face: flight in face_mosquito.mjs; a hand swat or face slap is seen as motion (motion_probe.mjs) where the mosquito is.
 const mosquito=new FaceMosquito({seed:(Date.now()&0x7fffffff)||1});
@@ -69,12 +80,17 @@ function currentFace(){
   const span=1-g.crop.left-g.crop.right,w=cameraOn&&cameraTracker?.lastFace?Math.max(.04,cameraTracker.lastFace.fw/span):.12;
   return {x:p.x,y:p.y,w};
 }
+// A short hint on the arena (the banner slot); it is removed when the mosquito is settled.
+function showHint(text,now){banner=mosquitoHint={text,at:now};}
 function startFaceMosquito(){
   if(mosquito.active||game.mode!=='PLAYING'){game.refundFaceMosquito();return false;}
   const face=currentFace();if(!face){feed('No face yet','The mosquito needs a tracked face');game.refundFaceMosquito();return false;}
   probe.reset();swatFrames=0;lastProbeTime=-1;
   if(!mosquito.start(performance.now(),face))return false;
-  game.setFaceMosquitoBusy(true);feed('Mosquito!','It is coming for your face: dodge it, swat it, or slap your face when it lands');return true;
+  mosquitoDemo=mosquitoCount++===0;landedHinted=false;
+  game.setFaceMosquitoBusy(true);feed(mosquitoDemo?'Practice mosquito!':'Mosquito!','It is coming for your face: dodge it, swat it, or slap your face when it lands');
+  if(!swatLearned)showHint('TILT YOUR HEAD TO DODGE',performance.now());
+  return true;
 }
 // One step of the mosquito per frame: look for motion where it is (camera only), advance it, and book the result with the game.
 // Motion around (p.x,p.y) in window coordinates, radius r in window widths; null when the camera has not produced a new frame since the last call.
@@ -101,17 +117,24 @@ function debugFaceMotion(now){
 }
 function stepMosquito(now,snapshot){
   if(!mosquito.active)return;
-  if(!['PLAYING','TRACKING_LOST','RECOVERING'].includes(snapshot.mode)){mosquito.cancel(now);game.setFaceMosquitoBusy(false);return;}
+  if(!['PLAYING','TRACKING_LOST','RECOVERING'].includes(snapshot.mode)){mosquito.cancel(now);game.setFaceMosquitoBusy(false);if(mosquitoHint&&banner===mosquitoHint)banner=null;mosquitoHint=null;return;}
   const snap=mosquito.snapshot(now);let level=0;
   if(swatFrames>0){swatFrames--;level=1;}                                   // the on-screen Swat button (no camera needed)
   else if(cameraOn&&cameraGeometry)level=motionLevelAt(snap.probe,snap.probe.r);
   if(level!==null){showSwat(level);debugStats.level=level;debugStats.peak=Math.max(debugStats.peak*.97,level);if(window.__mosqLog&&window.__mosqLog.length<4000)window.__mosqLog.push([Math.round(now),+level.toFixed(3),snap.state,+snap.x.toFixed(3),+snap.y.toFixed(3)]);}
-  const result=mosquito.update(now,currentFace(),level);
+  let result=mosquito.update(now,currentFace(),level);
   if(result){
     game.setFaceMosquitoBusy(false);
+    if(mosquitoHint&&banner===mosquitoHint)banner=null;mosquitoHint=null;
+    // The first mosquito of a round is a demonstration: a bite is not booked as a bite (no HP or score lost) and the feed explains what to do.
+    if(mosquitoDemo&&result.outcome==='BITE'){
+      result={...result,outcome:'UNKNOWN',reason:'TUTORIAL_BITE'};
+      feed('Practice mosquito: no penalty','Slap your face when it lands, or tilt your head so it misses');
+    }
+    if(result.outcome==='SWAT')swatLearned=true;
     const booked=game.settleFaceMosquito(result);
     if(booked){
-      lastEffect={outcome:booked.outcome,at:now,scoreDelta:booked.scoreDelta};
+      lastEffect={outcome:booked.outcome,at:now,scoreDelta:booked.scoreDelta,x:snap.x,y:snap.y};
       if(booked.outcome==='SWAT'&&cameraGeometry){const v=cameraGeometry.visible;catchFx.spawn(v.x+snap.x*v.width,v.y+snap.y*v.height,now,v.width/5);}
       if(booked.outcome==='BITE')biteAt=now;
     }
@@ -125,7 +148,11 @@ const game=new MatrixGame({onEvent:event=>{
       const v=cameraGeometry.visible,column=(event.cells?.[0]??event.cell-3),size=v.width/3;
       const at={x:v.x+(dropTarget(column)??.5)*v.width,y:v.y+DROP_FLOOR*v.height};catchFx.spawn(at.x,at.y,performance.now(),size*.5);
     }
-    lastEffect={outcome:event.outcome,at:performance.now(),scoreDelta:event.scoreDelta??0};
+    // x,y (window coordinates, 0..1) say where the effect belongs: the floor spot of a drop; the mosquito sets its own in stepMosquito.
+    const spot=event.kind==='DROP'?{x:dropTarget(event.cells?.[0]??event.cell-3)??.5,y:DROP_FLOOR}:{};
+    lastEffect={outcome:event.outcome,at:performance.now(),scoreDelta:event.scoreDelta??0,...spot};
+    const sound=OUTCOME_SOUND[event.outcome];if(sound)sfx.play(sound,{combo:event.combo});
+    if(event.kind==='FACE_MOSQUITO')sfx.mosquitoLoop.stop();
     const titles={HIT:'Ouch, hit!',DODGE:'Nice dodge',CATCH:'Caught it!',MISS:'Missed it',BOMB:'Boom! Bomb caught',AVOID:'Bomb dodged',SWAT:'Swatted it!',BITE:'Bitten!'};
     feed(titles[event.outcome]??'Undetermined',`${challengeNames[event.kind]??`Target cell ${event.cell}`} · ${event.outcome}`);
   } else if(event.type==='faceMosquito')startFaceMosquito();
@@ -304,7 +331,7 @@ function setCameraMode(on){
   }
   game.invalidateTracking();frameSource.reset();lastEffect=null;
 }
-$('#camera-toggle').addEventListener('click',async()=>{
+async function toggleCamera(){
   const button=$('#camera-toggle');
   if(cameraOn||cameraTracker){cameraTracker?.stop();cameraTracker=null;autoFrame.reset();$('#camera-center').disabled=true;$('#camera-center-reset').disabled=true;cameraCrop=NO_CROP;$('#camera-zoom').disabled=true;$('#camera-zoom-reset').disabled=true;$('#camera-facing').disabled=false;$('#camera-kind').disabled=false;setCameraMode(false);$('#camera-status').textContent='Camera off. Keyboard or mouse input is used.';return;}
   button.disabled=true;$('#camera-status').textContent='Starting camera and loading the pose model…';
@@ -315,7 +342,8 @@ $('#camera-toggle').addEventListener('click',async()=>{
   button.disabled=false;
   if(!ok)return;
   cameraTracker=tracker;$('#camera-center').disabled=kind!=='face';$('#camera-center-reset').disabled=false;$('#camera-zoom').disabled=kind!=='face';$('#camera-zoom-reset').disabled=false;$('#camera-facing').disabled=true;$('#camera-kind').disabled=true;setCameraMode(true);$('#camera-status').textContent='Camera tracking on. Keep your face in view (body mode: head and shoulders).';
-});
+}
+$('#camera-toggle').addEventListener('click',()=>{toggleCamera();});
 const zoomMessages={ZOOM_UNSUPPORTED:'This camera does not support zoom.',NO_FACE:'No face found yet. Sit in view, then try again.',ZOOM_FAILED:'The camera refused the zoom change.'};
 $('#camera-center').addEventListener('click',()=>{
   if(!cameraTracker)return;
@@ -348,13 +376,30 @@ function loop(){
   finally{animationId=requestAnimationFrame(loop);}
 }
 let loopFailed=false;
+// Sound that follows the game state each frame: a warning when a bomb appears, the mosquito's hum and its landing countdown.
+function updateSound(snapshot,mosquitoSnap){
+  const ids=new Set();
+  for(const attack of snapshot.attacks){
+    if(attack.variant!=='BOMB')continue;
+    ids.add(attack.eventId);
+    if(!warnedBombs.has(attack.eventId)){warnedBombs.add(attack.eventId);sfx.play('bombWarn',{leadMs:(1-(attack.progress??0))*(attack.due-attack.start),skipDedupe:true});}
+  }
+  for(const id of warnedBombs)if(!ids.has(id))warnedBombs.delete(id);
+  if(!mosquitoSnap){sfx.mosquitoLoop.stop();landedHinted=false;return;}
+  if(!sfx.mosquitoLoop.active)sfx.mosquitoLoop.start();
+  const face=currentFace(),landed=mosquitoSnap.state==='LANDED';
+  sfx.mosquitoLoop.update({dist:face?Math.min(1,mosquitoDistance(mosquitoSnap,face)/.6):1,landed,progress:mosquitoSnap.landedProgress});
+  if(landed&&!landedHinted){landedHinted=true;if(!swatLearned){showHint('SLAP YOUR FACE!',performance.now());feed('It landed!','Slap your face now');}}
+}
 function loopBody(){
   const now=performance.now();if(cameraOn)pollCamera();else addSyntheticFrame();let snapshot=game.tick();
   // Automatic waves (local game logic): irregular gold items and bombs while the round is playing and the box is ticked.
   // A round is 75 s: after that no new drops start, and when the last one has landed the round ends with a summary banner.
   if(autoDrops.checked&&waves.difficulty(now)>=1)roundEnding=true;
   if(roundEnding&&snapshot.attacks.length===0){
-    roundEnding=false;autoDrops.checked=false;banner={text:`ROUND OVER · SCORE ${snapshot.score}`,at:now};feed('Round over',`Score ${snapshot.score}`);
+    roundEnding=false;autoDrops.checked=false;const grade=gradeFor(snapshot.score);
+    banner={text:`ROUND OVER · SCORE ${snapshot.score}`,at:now,grade};feed('Round over',`Score ${snapshot.score}${grade?` · grade ${grade}`:''}`);
+    sfx.play('roundEnd');if(session.phase==='running')session.phase='over';syncStart();
   }
   // Once per round, about two thirds in, the mosquito comes for the face; gold items and bombs wait while it is around.
   // (once per round, retried about once a second until a face is tracked and no gold or bomb is still falling)
@@ -362,16 +407,81 @@ function loopBody(){
     nextMosquitoTry=now+1000;if(startFaceMosquito())mosquitoPlanned=true;
   }
   stepMosquito(now,snapshot);debugFaceMotion(now);
+  const mosquitoNow=mosquito.snapshot(now);updateSound(snapshot,mosquitoNow);stepSession(now);
   if(autoDrops.checked&&!roundEnding&&!mosquito.active&&snapshot.mode==='PLAYING'&&game.connection==='ONLINE'){
     const next=waves.update(now,snapshot.attacks.length);
     if(next){const id=`wave-${++waveSerial}`;game.receiveWaveDrop({notificationId:id,messageId:id,actorId:id,receivedAt:performance.now()},next);snapshot=game.tick();}
   }
   const last=frameSource.lastFrame,anchor=cameraOn?(last?.torso??last?.nose??null):(last?.nose??null);
-  const drawn=drawArena(ctx,snapshot,anchor,{now,lastEffect,banner,mosquito:mosquito.snapshot(now),biteAt,showMarker:debugOn,tracking:frameSource.running&&Boolean(anchor),geometry:cameraGeometry,
+  const roundLeftMs=autoDrops.checked&&!roundEnding?Math.max(0,Math.round(waves.roundMs-(now-waves.startedAt))):undefined;
+  const drawn=drawArena(ctx,{...snapshot,roundLeftMs},anchor,{now,lastEffect,banner,mosquito:mosquitoNow,biteAt,showMarker:debugOn,tracking:frameSource.running&&Boolean(anchor),geometry:cameraGeometry,
     backdrop:cameraOn?drawCameraBackdrop:null,marker:cameraOn});lastMarker=drawn?.position??null;
   catchFx.draw(ctx,now,fxSprites,cameraGeometry?.visible??null);updateDebug(now,snapshot);updateScreen(snapshot);
   if(now-lastOverlayUpdate>=100){lastOverlayUpdate=now;publishOverlay(snapshot);}
 }
+
+// One-click start: camera on (face mode, mirrored, auto-framed) -> 3-2-1 -> auto drops. The same button (or Esc) stops everything and turns the camera off.
+// phases: idle -> starting (camera opening) -> countdown -> running -> over (round finished; the button offers Play again) -> idle
+const session={phase:'idle',token:0,countdownAt:0,shown:null};
+const START_LABELS={idle:'Start playing',starting:'Starting camera… (click to cancel)',countdown:'Get ready… (click or Esc to stop)',running:'Stop playing (Esc)',over:'Play again'};
+function syncStart(){
+  const button=$('#start-playing');if(!button)return;
+  button.textContent=START_LABELS[session.phase];button.dataset.phase=session.phase;button.setAttribute('aria-pressed',String(session.phase==='running'||session.phase==='countdown'));
+}
+function startMessage(text){const el=$('#start-status');if(el)el.textContent=text;}
+async function startPlaying(){
+  const token=++session.token;session.phase='starting';syncStart();startMessage('');
+  if(!cameraOn){
+    $('#camera-kind').value='face';$('#camera-mirror').checked=true;$('#camera-auto').checked=true;
+    await toggleCamera();
+    if(token!==session.token){if(cameraOn)await toggleCamera();return;}             // cancelled while the camera was opening
+    if(!cameraOn){
+      const text=$('#camera-status').textContent,failed=/denied|another app|no camera|cannot|could not|failed/i.test(text);
+      session.phase='idle';syncStart();
+      startMessage(failed?text:'The camera could not start. Close other apps that use it and try again.');return;
+    }
+  }
+  $('#reset').click();                                                              // a clean round: score, combo and HP back to the start
+  session.phase='countdown';session.countdownAt=performance.now();session.shown=null;syncStart();startMessage('Stand where the camera sees your face.');
+}
+async function stopPlaying(){
+  session.token++;session.phase='idle';session.shown=null;
+  autoDrops.checked=false;autoDrops.dispatchEvent(new Event('change'));banner=null;
+  mosquito.cancel(performance.now());game.setFaceMosquitoBusy(false);sfx.mosquitoLoop.stop();
+  if(cameraOn||cameraTracker)await toggleCamera();
+  syncStart();startMessage('Stopped. Press Start playing to go again.');
+}
+// Driven from the frame loop so Esc/stop can never leave a timer behind.
+function stepSession(now){
+  if(session.phase!=='countdown')return;
+  const left=3-Math.floor((now-session.countdownAt)/1000);
+  if(left>=1){if(session.shown!==left){session.shown=left;banner={text:String(left),at:now,big:true};sfx.play('tick',{freq:1200,skipDedupe:true});}return;}
+  session.phase='running';session.shown=null;
+  autoDrops.checked=true;autoDrops.dispatchEvent(new Event('change'));banner={text:'GO!',at:now,big:true};   // the change handler clears the banner, so GO! is set after it
+  syncStart();startMessage('Catch the gold, dodge the bombs. Esc stops.');
+}
+$('#start-playing').addEventListener('click',()=>{
+  if(sfx.enabled&&!sfx.unlocked)sfx.unlock();                                       // a remembered "sound on" needs one click per page load
+  if(session.phase==='idle'||session.phase==='over')startPlaying();else stopPlaying();
+});
+document.addEventListener('keydown',event=>{if(event.key==='Escape'&&session.phase!=='idle'){event.preventDefault();stopPlaying();}});
+// Sound button: off by default; a click turns it on and unlocks the audio context (browsers require this), another click mutes it.
+function syncSound(failed=false){
+  const button=$('#sound-toggle'),slider=$('#sound-volume');if(!button)return;
+  const status=sfx.status();
+  button.textContent=soundDisabled?'Sound disabled (?sfx=0)':failed?'Sound unavailable in this browser':status==='AUDIO READY'?'🔊 Sound on (click to mute)':status==='AUDIO LOCKED'?'🔇 Sound locked (click to enable)':'🔇 Sound off (click to turn on)';
+  button.dataset.state=status;button.setAttribute('aria-pressed',String(status==='AUDIO READY'));button.disabled=soundDisabled;
+  if(slider){slider.value=String(Math.round(sfx.volume*100));slider.disabled=soundDisabled;}
+}
+$('#sound-toggle').addEventListener('click',async()=>{
+  if(soundDisabled)return;
+  if(sfx.enabled&&sfx.unlocked){sfx.setEnabled(false);syncSound();return;}
+  sfx.setEnabled(true);const ok=await sfx.unlock();
+  if(!ok)sfx.setEnabled(false);
+  syncSound(!ok);if(ok)sfx.play('roundStart');
+});
+$('#sound-volume').addEventListener('input',()=>{sfx.setVolume(Number($('#sound-volume').value)/100);});
+syncSound();syncStart();
 
 function send(text){
   const command=typeof text==='string'?text.trim():'';
@@ -560,7 +670,7 @@ $('#auth-mock-toggle').addEventListener('click',()=>{
 });
 window.addEventListener('message',event=>{popupController?.handleMessage(event);providerActivation?.handleMessage(event);});
 $('#reset').addEventListener('click',()=>{
-  game.reset();frameSource.reset();waves.reset(performance.now());roundEnding=false;banner=null;mosquito.cancel(performance.now());game.setFaceMosquitoBusy(false);mosquitoPlanned=false;player.x=.5;player.y=.5;tracking=true;lastEffect=null;game.start();
+  game.reset();frameSource.reset();waves.reset(performance.now());roundEnding=false;banner=null;mosquitoHint=null;mosquitoCount=0;mosquito.cancel(performance.now());game.setFaceMosquitoBusy(false);mosquitoPlanned=false;player.x=.5;player.y=.5;tracking=true;lastEffect=null;game.start();
   if(ircChat)game.setConnection(ircChat.status==='ONLINE');else if(providerActivation)game.setConnection(providerActivation.provider.transport.status==='ONLINE');else if(mockMode||chatMode)game.setConnection((chatMode?chatTransport:transport).status==='ONLINE');else adapter.ingest(syntheticWelcome());
   poseControls.spread=.1;poseControls.hip=.5;poseControls.leftWrist={x:.25,y:.55};poseControls.rightWrist={x:.75,y:.55};
   $('#elbow-spread').value='10';$('#elbow-value').textContent='10%';for(const id of ['elbow-known','wrist-known','hip-known'])$(`#${id}`).checked=true;
@@ -568,8 +678,8 @@ $('#reset').addEventListener('click',()=>{
   $('#command-feedback').textContent='Try !throw 1–9, !drop 1–3, !bomb 1–3, !freeze, !mosquito or !lava';feed('Round reset','HP and score reset');
 });
 document.addEventListener('visibilitychange',()=>{
-  if(document.hidden){frameSource.stop();if(game.mode==='PLAYING'||game.mode==='TRACKING_LOST'||game.mode==='RECOVERING')game.pause();feed('Game paused','Judging pauses while the page is hidden');const snapshot=game.tick();updateScreen(snapshot);publishOverlay(snapshot,{force:true});}
-  else{frameSource.start();stabilizer.reset();}   // back on screen: judging frames may flow again (the game itself still waits for Resume)
+  if(document.hidden){sfx.suspend();frameSource.stop();if(game.mode==='PLAYING'||game.mode==='TRACKING_LOST'||game.mode==='RECOVERING')game.pause();feed('Game paused','Judging pauses while the page is hidden');const snapshot=game.tick();updateScreen(snapshot);publishOverlay(snapshot,{force:true});}
+  else{sfx.resume();frameSource.start();stabilizer.reset();}   // back on screen: judging frames may flow again (the game itself still waits for Resume)
 });
 window.addEventListener('pagehide',()=>{stopOverlaySync();cancelAnimationFrame(animationId);transport.stop();chatTransport.stop();cameraTracker?.stop();popupController?.dispose();providerActivation?.stop();ircChat?.stop();oauth.clear();});
 

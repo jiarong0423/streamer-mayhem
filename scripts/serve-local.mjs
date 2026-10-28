@@ -7,10 +7,10 @@ import { dirname, resolve } from 'node:path';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'../dist');
 const routes=new Map([
   ['/',['index.html','text/html; charset=utf-8']], ['/index.html',['index.html','text/html; charset=utf-8']],
-  ['/styles.css',['styles.css','text/css; charset=utf-8']],
+  ['/styles.css',['styles.css','text/css; charset=utf-8']], ['/ux.css',['ux.css','text/css; charset=utf-8']],
   ['/overlay.html',['overlay.html','text/html; charset=utf-8']], ['/overlay.css',['overlay.css','text/css; charset=utf-8']],
   ['/oauth-callback.html',['oauth-callback.html','text/html; charset=utf-8']],
-  ...['app.mjs','frame_source.mjs','overlay.mjs','overlay_protocol.mjs','matrix.mjs','pose_freeze.mjs','action_games.mjs','matrix_view.mjs','camera_geometry.mjs','arena_draw.mjs','eventsub_adapter.mjs','mock_eventsub_transport.mjs','mock_oauth.mjs','oauth-callback.mjs','twitch_chat_contract.mjs','twitch_provider.mjs','twitch_endpoints.mjs','provider_activation.mjs','auth_popup_controller.mjs','irc_anonymous.mjs','camera_tracker.mjs','auto_frame.mjs','catch_fx.mjs','drop_lanes.mjs','art.mjs','drop_waves.mjs','face_mosquito.mjs','motion_probe.mjs'].map(name=>[`/${name}`,[name,'text/javascript; charset=utf-8']]),
+  ...['app.mjs','frame_source.mjs','overlay.mjs','overlay_protocol.mjs','matrix.mjs','pose_freeze.mjs','action_games.mjs','matrix_view.mjs','camera_geometry.mjs','arena_draw.mjs','eventsub_adapter.mjs','mock_eventsub_transport.mjs','mock_oauth.mjs','oauth-callback.mjs','twitch_chat_contract.mjs','twitch_provider.mjs','twitch_endpoints.mjs','provider_activation.mjs','auth_popup_controller.mjs','irc_anonymous.mjs','camera_tracker.mjs','auto_frame.mjs','catch_fx.mjs','drop_lanes.mjs','art.mjs','drop_waves.mjs','face_mosquito.mjs','motion_probe.mjs','sfx.mjs'].map(name=>[`/${name}`,[name,'text/javascript; charset=utf-8']]),
 ]);
 for(const [file,type] of [['vision_bundle.mjs','text/javascript; charset=utf-8'],['wasm/vision_wasm_internal.js','text/javascript; charset=utf-8'],['wasm/vision_wasm_internal.wasm','application/wasm'],['pose_landmarker_lite.task','application/octet-stream'],['blaze_face_short_range.tflite','application/octet-stream'],['face_landmarker.task','application/octet-stream']])routes.set(`/vendor/mediapipe/${file}`,[`vendor/mediapipe/${file}`,type]);
 for(const file of ['star_01.png','star_02.png','star_06.png'])routes.set(`/vendor/kenney-particles/${file}`,[`vendor/kenney-particles/${file}`,'image/png']);
