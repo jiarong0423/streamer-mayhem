@@ -60,3 +60,24 @@ test('WAVES-08 gaps never drop below the global cooldown floor, even late in a r
   const gaps=out.slice(1).map((d,i)=>d.t-out[i].t);
   assert.ok(Math.min(...gaps)>=440,`min gap ${Math.min(...gaps)}`);
 });
+
+test('WAVE-R every generated drop is reachable: lane steps get time, gold and bomb never share a lane within 450 ms, and drops keep coming (RT3 reachability)',()=>{
+  for(let seed=1;seed<=60;seed++){
+    const w=new DropWaves({seed});const drops=[];let live=[];
+    for(let now=0;now<=75000;now+=16){
+      live=live.filter(d=>d.at>now);
+      const d=w.update(now,live.length);
+      if(d){const item={at:now+d.fall,column:d.column,bomb:d.variant==='BOMB',fall:d.fall};drops.push(item);live.push(item);}
+    }
+    assert.ok(drops.length>=25,`seed ${seed}: only ${drops.length} drops`);
+    for(const a of drops){
+      assert.ok(a.fall>=1300,`seed ${seed}: fall ${a.fall}`);
+      for(const b of drops){
+        if(a===b||b.at<a.at-1e-9||(b.at===a.at&&drops.indexOf(b)<drops.indexOf(a)))continue;
+        const dt=b.at-a.at;
+        if(a.column!==b.column)assert.ok(dt>=Math.abs(a.column-b.column)*350-1,`seed ${seed}: lanes ${a.column}->${b.column} only ${dt} ms apart`);
+        else if(a.bomb!==b.bomb)assert.ok(dt>=450-1,`seed ${seed}: gold and bomb in lane ${a.column} ${dt} ms apart`);
+      }
+    }
+  }
+});

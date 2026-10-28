@@ -20,7 +20,13 @@ import {makeOverlayState,OVERLAY_CLOSED_TYPE} from './overlay_protocol.mjs';
 import {SyntheticFrameSource} from './frame_source.mjs';
 
 // One line for the activity feed, by what the chat command really was (the adapter keeps the game's `kind`).
+let lastViewer=null;      // {name,at} of the latest accepted chat command, shown on the stream overlay for a few seconds
 function describeDelivery(result){
+  if(result.viewer)lastViewer={name:result.viewer,at:performance.now()};
+  const who=result.viewer?`${result.viewer}: `:'';
+  return who+describeCommand(result);
+}
+function describeCommand(result){
   if(result.kind==='FACE_MOSQUITO')return '!mosquito · watch your face';
   if(result.kind==='DROP'){const lane=(result.cells?.[0]??result.cell-3);return result.variant==='BOMB'?`!bomb ${lane} · dodge it`:`!drop ${lane} · get under it`;}
   return `!throw ${result.cell} · 0.5 s warning`;
@@ -54,7 +60,9 @@ const OUTCOME_SOUND={CATCH:'catch',MISS:'miss',BOMB:'bomb',AVOID:'avoid',HIT:'hi
 const warnedBombs=new Set();
 // Mosquito tutorial: the first mosquito of a round is a demonstration (its bite costs nothing); hints show until the first successful swat.
 let mosquitoCount=0,mosquitoDemo=false,swatLearned=false,landedHinted=false,mosquitoHint=null;
-const waves=new DropWaves({seed:(Date.now()&0x7fffffff)||1});let waveSerial=0,roundEnding=false,banner=null;
+// ?seed=N makes the automatic waves repeatable (for rehearsals and the video); otherwise each round differs.
+const seedParam=Number(new URLSearchParams(location.search).get('seed'));
+const waves=new DropWaves({seed:Number.isInteger(seedParam)&&seedParam>0?seedParam:(Date.now()&0x7fffffff)||1});let waveSerial=0,roundEnding=false,banner=null;
 const autoDrops=document.querySelector('#auto-drops');
 $('#face-mosquito').addEventListener('click',()=>{startFaceMosquito();});
 $('#swat').addEventListener('click',()=>{swatFrames=3;});
@@ -215,7 +223,8 @@ try {
 function publishOverlay(snapshot,{force=false}={}){
   if(!overlayEnabled||!overlaySession||(overlayInFlight&&!force))return;
   const sourcePoint=snapshot.mode==='PLAYING'&&frameSource.running&&cameraGeometry?frameSource.lastFrame?.nose??null:null;
-  const message=makeOverlayState({session:overlaySession,sequence:++overlaySequence,geometry:cameraGeometry,snapshot,sourcePoint});
+  const viewer=lastViewer&&performance.now()-lastViewer.at<4000?lastViewer.name:undefined;
+  const message=makeOverlayState({session:overlaySession,sequence:++overlaySequence,geometry:cameraGeometry,snapshot:{...snapshot,...(viewer?{viewer}:{})},sourcePoint});
   overlayInFlight++;fetch('./__overlay/state',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(message),credentials:'omit',redirect:'error',signal:AbortSignal.timeout(1000)}).then(response=>{if(!response.ok)throw new Error('RELAY_UNAVAILABLE');if(overlayEnabled)$('#overlay-hint').textContent='Synthetic data sent; keep this controller page open.';}).catch(()=>{if(overlayEnabled)$('#overlay-hint').textContent='Cannot reach the local overlay relay; check the local server.';}).finally(()=>{overlayInFlight--;});
 }
 

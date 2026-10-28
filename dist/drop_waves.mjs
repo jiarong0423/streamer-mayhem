@@ -6,11 +6,11 @@ const finite=Number.isFinite;
 function rng(seed){let x=(seed>>>0)||1;return()=>{x^=x<<13;x>>>=0;x^=x>>>17;x^=x<<5;x>>>=0;return x/4294967296;};}
 
 export class DropWaves {
-  constructor({seed=1,maxActive=3,roundMs=75000,gapMin=500,gapMax=2200,gapBase=700,gapMean=900,fallMin=1600,fallMax=2800,bombStart=.12,bombEnd=.28,gapFloor=450}={}) {
+  constructor({seed=1,maxActive=3,roundMs=75000,gapMin=500,gapMax=2200,gapBase=700,gapMean=900,fallMin=1600,fallMax=2800,bombStart=.12,bombEnd=.28,gapFloor=450,fallFloor=1300,laneStepMs=350,mixedLaneMs=450}={}) {
     if(!Number.isInteger(maxActive)||maxActive<1||maxActive>8||!(roundMs>0)||!(gapMin>0&&gapMax>=gapMin)||!(fallMin>0&&fallMax>=fallMin)||!(bombStart>=0&&bombEnd<=1&&bombEnd>=bombStart))throw new RangeError('INVALID_WAVES');
-    Object.assign(this,{seed,maxActive,roundMs,gapMin,gapMax,gapBase,gapMean,fallMin,fallMax,bombStart,bombEnd,gapFloor});this.reset(0);
+    Object.assign(this,{seed,maxActive,roundMs,gapMin,gapMax,gapBase,gapMean,fallMin,fallMax,bombStart,bombEnd,gapFloor,fallFloor,laneStepMs,mixedLaneMs});this.reset(0);
   }
-  reset(now){this.random=rng(this.seed);this.startedAt=now;this.nextAt=now+800;this.lastColumn=0;this.sameColumn=0;this.count=0;}
+  reset(now){this.random=rng(this.seed);this.startedAt=now;this.nextAt=now+800;this.lastColumn=0;this.sameColumn=0;this.count=0;this.landings=[];}
   // 0 at the start of a round, 1 at the end (and after it).
   difficulty(now){return Math.max(0,Math.min(1,(now-this.startedAt)/this.roundMs));}
   #gap(d){
@@ -23,7 +23,17 @@ export class DropWaves {
     let c=1+Math.floor(this.random()*3);
     // Never the same lane more than twice in a row, so sitting still in the middle is not a strategy.
     if(c===this.lastColumn&&this.sameColumn>=2)c=1+((c-1+1+Math.floor(this.random()*2))%3);
-    this.sameColumn=c===this.lastColumn?this.sameColumn+1:1;this.lastColumn=c;return c;
+    return c;
+  }
+  // Can a streamer who leans from lane to lane (a lane step costs laneStepMs) reach this landing? Different lanes need enough time between landings,
+  // and a gold item and a bomb must not land in the same lane almost together, or catching one means catching the other.
+  #reachable(column,bomb,landAt){
+    for(const o of this.landings){
+      const dt=Math.abs(landAt-o.at);
+      if(o.column===column){if(o.bomb!==bomb&&dt<this.mixedLaneMs)return false;}
+      else if(dt<Math.abs(column-o.column)*this.laneStepMs)return false;
+    }
+    return true;
   }
   // Returns {column,variant,fall} when a drop should start now, else null. `active` is how many auto or chat drops are on screen.
   update(now,active=0) {
@@ -31,10 +41,18 @@ export class DropWaves {
     if(now<this.nextAt)return null;
     const d=this.difficulty(now);
     if(active>=this.maxActive){this.nextAt=now+250;return null;}              // full: look again shortly
+    this.landings=this.landings.filter(o=>o.at>now-1000);
     const bomb=this.random()<this.bombStart+(this.bombEnd-this.bombStart)*d;
-    const fall=(this.fallMin+this.random()*(this.fallMax-this.fallMin))*(1-.35*d);
-    const drop={column:this.#column(),...(bomb?{variant:'BOMB'}:{}),fall:Math.round(fall)};
-    this.nextAt=now+this.#gap(d);this.count++;
-    return drop;
+    for(let tries=0;tries<8;tries++){
+      const column=this.#column();
+      const fall=Math.max(this.fallFloor,(this.fallMin+this.random()*(this.fallMax-this.fallMin))*(1-.35*d));
+      if(!this.#reachable(column,bomb,now+fall))continue;
+      this.sameColumn=column===this.lastColumn?this.sameColumn+1:1;this.lastColumn=column;
+      this.landings.push({column,bomb,at:now+fall});
+      const drop={column,...(bomb?{variant:'BOMB'}:{}),fall:Math.round(fall)};
+      this.nextAt=now+this.#gap(d);this.count++;
+      return drop;
+    }
+    this.nextAt=now+200;return null;                                         // nothing fair right now: try again shortly
   }
 }

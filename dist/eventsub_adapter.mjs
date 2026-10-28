@@ -37,7 +37,7 @@ export class EventSubAdapter {
     const chat={notificationId:data.metadata.message_id,messageId:event?.message_id,
       actorId:event?.chatter_user_id,text:event?.message?.text,receivedAt:this.clock()};
     const delivery=this.game.receiveChat(chat);
-    const output={kind:'chat',...delivery};
+    const output={kind:'chat',...delivery,viewer:cleanViewerName(event?.chatter_user_name)};
     this.onDelivery(output);
     return output;
   }
@@ -48,8 +48,13 @@ export function syntheticWelcome() {
   return {metadata:{message_type:'session_welcome'},payload:{session:{id:'synthetic-session'}}};
 }
 
-export function syntheticChat({ notificationId, messageId, actorId='demo-viewer', broadcasterId='synthetic-channel', text }) {
+// A chatter's display name is shown on stream, so it is cut down to something safe: no control, zero-width or tag characters, at most 20 characters.
+export function cleanViewerName(value){
+  if(typeof value!=='string')return '';
+  return Array.from(value.replace(/[\u0000-\u001f\u007f-\u009f\u00a0\u200b-\u200f\u2028-\u202f\u2060-\u206f\ufeff\u{e0000}-\u{e007f}]/gu,'')).slice(0,20).join('').trim();
+}
+export function syntheticChat({ notificationId, messageId, actorId='demo-viewer', chatterName, broadcasterId='synthetic-channel', text }) {
   return {metadata:{message_type:'notification',message_id:notificationId,subscription_type:'channel.chat.message'},
     payload:{subscription:{type:'channel.chat.message',version:'1'},
-      event:{message_id:messageId,broadcaster_user_id:broadcasterId,chatter_user_id:actorId,message:{text}}}};
+      event:{message_id:messageId,broadcaster_user_id:broadcasterId,chatter_user_id:actorId,...(chatterName?{chatter_user_name:chatterName}:{}),message:{text}}}};
 }

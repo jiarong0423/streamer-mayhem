@@ -62,7 +62,9 @@ function renderSnapshot(snapshot){
   const hud={};
   if(snapshot.score!==undefined)hud.score=number(snapshot.score,0,1e6);
   if(snapshot.hp!==undefined)hud.hp=number(snapshot.hp,0,100);
-  return {mode:snapshot.mode,attacks:playing?attacks:[],...hud,...(freeze?{freeze}:{}),...(action?{actionGame:action}:{})};
+  // The last viewer who triggered something (display name, already cleaned by the sender); the overlay shows it for a few seconds.
+  if(snapshot.viewer!==undefined&&!(typeof snapshot.viewer==='string'&&/^[^\u0000-\u001f\u007f-\u009f]{1,20}$/u.test(snapshot.viewer)))return error();
+  return {mode:snapshot.mode,attacks:playing?attacks:[],...hud,...(snapshot.viewer?{viewer:snapshot.viewer}:{}),...(freeze?{freeze}:{}),...(action?{actionGame:action}:{})};
 }
 export function parseOverlayQuery(search) {
   const q=new URLSearchParams(search);

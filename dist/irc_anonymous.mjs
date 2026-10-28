@@ -98,6 +98,6 @@ export class IrcAnonymousChat {
     if(command!=='PRIVMSG' || !this.roomId || tags['room-id']!==this.roomId)return;
     const id=tags.id,userId=tags['user-id'],text=trailing;
     if(!id || !/^[0-9]{1,20}$/.test(userId??'') || typeof text!=='string' || text.startsWith('\u0001'))return;
-    this.adapter.ingest(syntheticChat({notificationId:id,messageId:id,actorId:userId,broadcasterId:this.roomId,text}));
+    this.adapter.ingest(syntheticChat({notificationId:id,messageId:id,actorId:userId,chatterName:tags['display-name']||undefined,broadcasterId:this.roomId,text}));
   }
 }

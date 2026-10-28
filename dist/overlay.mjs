@@ -1,7 +1,7 @@
 // Standalone Browser Source page, synthetic channel only; no Twitch, OBS or camera APIs.
 import {parseOverlayQuery,readOverlayState,OVERLAY_CLOSED_TYPE} from './overlay_protocol.mjs';
 import {drawCameraOverlay} from './matrix_view.mjs';
-import {drawHud as sharedHud} from './art.mjs';
+import {drawHud as sharedHud,strokedText,COLORS,MIN_TEXT_PX} from './art.mjs';
 import {projectCameraPoint,visiblePointToCanvas} from './camera_geometry.mjs';
 import {gridCell} from './matrix.mjs';
 const canvas=document.querySelector('#overlay'),ctx=canvas.getContext('2d');
@@ -10,6 +10,12 @@ function clear(status){ctx.clearRect(0,0,canvas.width,canvas.height);canvas.setA
 function resize(){canvas.width=Math.min(4096,Math.max(1,Math.round(innerWidth)));canvas.height=Math.min(2160,Math.max(1,Math.round(innerHeight)));if(lastMessageData)render(lastMessageData);else clear('Overlay not connected');}
 // Score and health (and, once the protocol carries them, combo / multiplier / round timer) come from the shared art kit; the panel is a little denser on a transparent stream.
 const drawHud=(snapshot,rect,now)=>sharedHud(ctx,rect,snapshot,now,{panelAlpha:.72});
+// What chat can type, always on screen while playing, plus the name of whoever just triggered something.
+function drawHints(rect,viewer){
+  const size=Math.max(MIN_TEXT_PX,rect.height/30);
+  strokedText(ctx,'!drop 1–3  ·  !bomb 1–3  ·  !mosquito',rect.x+rect.width/2,rect.y+rect.height-size*.8,size,COLORS.paper,{alpha:.85});
+  if(viewer)strokedText(ctx,viewer,rect.x+rect.width/2,rect.y+rect.height-size*2.3,size*1.1,COLORS.gold);
+}
 function render(data){
   let state;try{state=readOverlayState(data,session,canvas.width,canvas.height);}catch{lastMessageData=null;clear('Invalid overlay data');return;}
   if(!state.geometry){clear('Not calibrated');return;}
@@ -22,6 +28,7 @@ function render(data){
   let cell=null;
   if(snapshot.mode==='PLAYING'){const p=visiblePointToCanvas(projected,state.geometry);cell=projectedCell;if(p){ctx.fillStyle='#00ffff';ctx.beginPath();ctx.arc(p.x,p.y,Math.max(2,Math.min(5,rect.width/70)),0,2*Math.PI);ctx.fill();}}
   if(Number.isFinite(snapshot.score))drawHud(snapshot,rect,now);
+  if(snapshot.mode==='PLAYING')drawHints(rect,snapshot.viewer);
   ctx.restore();const status=snapshot.mode==='TRACKING_LOST'?'Tracking lost':`Overlay ${snapshot.mode}`;canvas.setAttribute('aria-label',status);canvas.dataset.status=status;canvas.dataset.cell=cell===null?'':String(cell);
 }
 try{session=parseOverlayQuery(location.search);}catch{session=null;}
