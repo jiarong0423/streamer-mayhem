@@ -300,6 +300,8 @@ export class MatrixGame {
 
   // The face mosquito flies in the page (face_mosquito.mjs); the page tells the core when it is on screen and what came of it.
   setFaceMosquitoBusy(busy) { this.faceMosquitoBusy = Boolean(busy); }
+  // A !mosquito that was accepted but could not start (no face yet) should not use up the cooldown.
+  refundFaceMosquito() { this.lastFaceMosquito = -Infinity; }
   // SWAT +faceSwatScore, DODGE +faceDodgeScore (it gave up), BITE -faceBiteDamage hp and -faceBitePenalty points, UNKNOWN (face lost / cancelled) nothing.
   settleFaceMosquito({outcome,reason,approaches=1}={}) {
     if (!['SWAT','DODGE','BITE','UNKNOWN'].includes(outcome) || (this.mode !== 'PLAYING' && this.mode !== 'RECOVERING' && this.mode !== 'TRACKING_LOST')) return null;

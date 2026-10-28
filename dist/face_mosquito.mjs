@@ -15,9 +15,9 @@ export class FaceMosquito {
   constructor({approachMs=3500,retryMs=1300,maxApproaches=3,landMs=2000,lostMs=1000,lagMs=450,amplitude=.12,landFactor=.45,swatLevel=.3,swatFrames=2,seed=1}={}) {
     if(![approachMs,retryMs,landMs,lostMs,lagMs].every(n=>finite(n)&&n>0)||!Number.isInteger(maxApproaches)||maxApproaches<1||!(amplitude>=0&&amplitude<=.4)||!(landFactor>0&&landFactor<=2)||!(swatLevel>0&&swatLevel<=1)||!Number.isInteger(swatFrames)||swatFrames<1)throw new RangeError('INVALID_MOSQUITO');
     Object.assign(this,{approachMs,retryMs,maxApproaches,landMs,lostMs,lagMs,amplitude,landFactor,swatLevel,swatFrames,seed});
-    this.serial=0;this.#clear();
+    this.serial=0;this.maxStepMs=100;this.#clear();
   }
-  #clear(){this.state='IDLE';this.history=[];this.hits=0;this.lostSince=null;this.pos={x:0,y:0};this.angle=0;this.approach=0;}
+  #clear(){this.lastNow=-Infinity;this.state='IDLE';this.history=[];this.hits=0;this.lostSince=null;this.pos={x:0,y:0};this.angle=0;this.approach=0;}
   get active(){return this.state!=='IDLE';}
 
   // Starts a mosquito from a random edge. `face` = {x,y,w} in window coords. Returns false if one is already flying or the face is unusable.
@@ -27,7 +27,7 @@ export class FaceMosquito {
     const side=Math.floor(this.random()*3);
     const from=side===0?{x:.1+this.random()*.8,y:-.06}:side===1?{x:-.06,y:.05+this.random()*.5}:{x:1.06,y:.05+this.random()*.5};
     this.#clear();this.state='FLYING';this.startedAt=now;this.begin(now,from,this.approachMs);
-    this.history=[{t:now,x:face.x,y:face.y}];this.face={...face};this.pos={...from};
+    this.history=[{t:now,x:face.x,y:face.y}];this.face={...face};this.pos={...from};this.lastNow=now;
     return true;
   }
   begin(now,from,duration){
@@ -41,12 +41,22 @@ export class FaceMosquito {
     for(const h of this.history){if(h.t<=target)a=h;else break;}
     return a;
   }
-  #remember(now,face){this.history.push({t:now,x:face.x,y:face.y});while(this.history.length>2&&this.history[1].t<now-this.lagMs-200)this.history.shift();}
+  #remember(now,face){const last=this.history.at(-1);if(last&&now<=last.t)return;this.history.push({t:now,x:face.x,y:face.y});while(this.history.length>2&&this.history[1].t<now-this.lagMs-200)this.history.shift();}
 
-  // Advances the mosquito. `face` is {x,y,w} or null when not tracked; `level` is the fraction (0..1) of moving pixels around the mosquito/face.
+  // Advances the mosquito. `face` is {x,y,w} or null when not tracked; `level` is the fraction (0..1) of moving pixels around the mosquito/face,
+  // or null when the camera has produced no new frame since the last call (the screen redraws faster than the camera, so the same frame comes round twice).
   // Returns null while it is still going, or a result {outcome,reason,approaches,ms} exactly once.
   update(now,face,level=0){
     if(!this.active||!finite(now))return null;
+    if(now<this.lastNow)return null;                                   // time never runs backwards for the mosquito
+    // A long gap (tab switched away, a stalled frame) must not make it bite or arrive in one step: only maxStepMs of it counts, the rest is skipped.
+    const gap=now-this.lastNow;
+    if(Number.isFinite(gap)&&gap>this.maxStepMs){
+      const skip=gap-this.maxStepMs;
+      this.t0+=skip;this.nextJitter+=skip;if(this.landedAt!==undefined&&this.state==='LANDED')this.landedAt+=skip;if(this.lostSince!==null)this.lostSince+=skip;
+      for(const h of this.history)h.t+=skip;
+    }
+    this.lastNow=now;
     const usable=face&&[face.x,face.y,face.w].every(finite)&&face.w>0;
     if(!usable){
       if(this.lostSince===null)this.lostSince=now;
@@ -78,10 +88,11 @@ export class FaceMosquito {
     return null;
   }
   #swatted(level){
+    if(level===null)return this.hits>=this.swatFrames;           // no new camera frame since the last call: nothing to count
     if(finite(level)&&level>=this.swatLevel)this.hits++;else this.hits=0;
     return this.hits>=this.swatFrames;
   }
-  #finish(outcome,reason,now){const result={outcome,reason,approaches:this.approach,ms:Math.round(now-this.startedAt)};this.#clear();return result;}
+  #finish(outcome,reason,now){const result={outcome,reason,approaches:this.approach,ms:Math.max(0,Math.round(now-this.startedAt))};this.#clear();return result;}
   // Stops without a verdict (round ended, game paused): no score, no penalty.
   cancel(now){if(!this.active)return null;return this.#finish('UNKNOWN','CANCELLED',finite(now)?now:this.startedAt);}
   // What to draw. `landedProgress` runs 0..1 over the two-second window; `probe` is where to look for a swat (window coords) and how big.

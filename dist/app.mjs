@@ -47,7 +47,10 @@ const catchFx=new CatchBurst();let fxSprites={},lastMarker=null;
 const mosquito=new FaceMosquito({seed:(Date.now()&0x7fffffff)||1});
 const probe=new MotionProbe(),probeCanvas=document.createElement('canvas');probeCanvas.width=64;probeCanvas.height=36;
 const probeCtx=probeCanvas.getContext('2d',{willReadFrequently:true});
-let swatFrames=0,biteAt=-Infinity,mosquitoPlanned=false;
+let probeFailed=false;
+let swatFrames=0,biteAt=-Infinity,mosquitoPlanned=false,lastProbeTime=-1,nextMosquitoTry=0;
+if(debugOnEarly())window.__mosqLog=[];
+function debugOnEarly(){return new URLSearchParams(location.search).has('debug');}
 // Face position and width in visible-window coordinates, or null when no face is tracked.
 function currentFace(){
   const g=cameraGeometry;if(!g)return null;
@@ -57,28 +60,42 @@ function currentFace(){
   return {x:p.x,y:p.y,w};
 }
 function startFaceMosquito(){
-  if(mosquito.active||game.mode!=='PLAYING')return false;
-  const face=currentFace();if(!face){feed('No face yet','The mosquito needs a tracked face');return false;}
-  probe.reset();swatFrames=0;
+  if(mosquito.active||game.mode!=='PLAYING'){game.refundFaceMosquito();return false;}
+  const face=currentFace();if(!face){feed('No face yet','The mosquito needs a tracked face');game.refundFaceMosquito();return false;}
+  probe.reset();swatFrames=0;lastProbeTime=-1;
   if(!mosquito.start(performance.now(),face))return false;
   game.setFaceMosquitoBusy(true);feed('Mosquito!','It is coming for your face: dodge it, swat it, or slap your face when it lands');return true;
 }
 // One step of the mosquito per frame: look for motion where it is (camera only), advance it, and book the result with the game.
+// Motion around (p.x,p.y) in window coordinates, radius r in window widths; null when the camera has not produced a new frame since the last call.
+// The screen redraws at 60 Hz but the camera delivers about 30 frames a second: only a NEW camera frame is compared, otherwise two identical frames
+// would read as "no motion" and a real slap could never add up to two frames in a row.
+function motionLevelAt(p,r){
+  const video=$('#camera-video');
+  if(!cameraOn||!cameraGeometry||video.readyState<2||video.currentTime===lastProbeTime)return null;
+  try{
+    lastProbeTime=video.currentTime;
+    probeCtx.drawImage(video,0,0,64,36);
+    const gray=grayFromRgba(probeCtx.getImageData(0,0,64,36).data,64,36);if(gray)probe.push(gray);
+    const c=canvasPointToSource(visiblePointToCanvas({x:p.x,y:p.y},cameraGeometry),cameraGeometry);
+    return c?probe.level({x:c.x,y:c.y,r:r*(1-cameraGeometry.crop.left-cameraGeometry.crop.right)}):0;
+  }catch(error){if(!probeFailed){probeFailed=true;console.error('ERROR motion probe',error);}return 0;}   // a failed read must not freeze the mosquito
+}
+// With ?debug=1 the face motion is measured all the time (no mosquito needed) so a slap, a clap or a wave can be seen and the threshold calibrated.
+function debugFaceMotion(now){
+  if(!debugOn||!cameraOn||mosquito.active)return;
+  const face=currentFace();if(!face)return;
+  const level=motionLevelAt(face,face.w);if(level===null)return;
+  debugStats.level=level;debugStats.peak=Math.max(debugStats.peak*.97,level);
+  if(window.__mosqLog&&window.__mosqLog.length<4000)window.__mosqLog.push([Math.round(now),+level.toFixed(3),'FACE',+face.x.toFixed(3),+face.y.toFixed(3)]);
+}
 function stepMosquito(now,snapshot){
   if(!mosquito.active)return;
   if(!['PLAYING','TRACKING_LOST','RECOVERING'].includes(snapshot.mode)){mosquito.cancel(now);game.setFaceMosquitoBusy(false);return;}
   const snap=mosquito.snapshot(now);let level=0;
   if(swatFrames>0){swatFrames--;level=1;}                                   // the on-screen Swat button (no camera needed)
-  else if(cameraOn&&cameraGeometry){
-    const video=$('#camera-video');
-    if(video.readyState>=2){
-      probeCtx.drawImage(video,0,0,64,36);
-      const gray=grayFromRgba(probeCtx.getImageData(0,0,64,36).data,64,36);if(gray)probe.push(gray);
-      const c=canvasPointToSource(visiblePointToCanvas({x:snap.probe.x,y:snap.probe.y},cameraGeometry),cameraGeometry);
-      if(c)level=probe.level({x:c.x,y:c.y,r:snap.probe.r*(1-cameraGeometry.crop.left-cameraGeometry.crop.right)});
-    }
-  }
-  debugStats.level=level;debugStats.peak=Math.max(debugStats.peak*.97,level);
+  else if(cameraOn&&cameraGeometry)level=motionLevelAt(snap.probe,snap.probe.r);
+  if(level!==null){debugStats.level=level;debugStats.peak=Math.max(debugStats.peak*.97,level);if(window.__mosqLog&&window.__mosqLog.length<4000)window.__mosqLog.push([Math.round(now),+level.toFixed(3),snap.state,+snap.x.toFixed(3),+snap.y.toFixed(3)]);}
   const result=mosquito.update(now,currentFace(),level);
   if(result){
     game.setFaceMosquitoBusy(false);
@@ -234,7 +251,7 @@ function updateDebug(now,snapshot){
   const dt=(now-debugStats.since)/1000;if(dt>=1){debugStats.fps=debugStats.frames/dt;debugStats.frames=0;debugStats.since=now;}
   debugStats.shownAt=now;const v=cameraGeometry?.visible,x=v&&lastMarker?(lastMarker.x-v.x)/v.width:null,lane=dropColumn(x);
   const el=$('#camera-debug');el.hidden=false;
-  el.textContent=`score ${debugStats.score===null?'none':debugStats.score.toFixed(2)} · fps ${debugStats.fps.toFixed(1)} · x ${x===null?'—':Math.round(x*100)+'%'} · lane ${lane===null?'—':['L','C','R'][lane-1]} · ${snapshot.mode}`+(mosquito.active?` · motion ${debugStats.level.toFixed(2)} peak ${debugStats.peak.toFixed(2)}`:'')+(snapshot.lastResult?.kind==='DROP'?` · judged ${snapshot.lastResult.outcome} x ${snapshot.lastResult.sampledX===null?'—':Math.round(snapshot.lastResult.sampledX*100)+'%'} caught ${snapshot.lastResult.caught===null?'—':snapshot.lastResult.caught}`:'');
+  el.textContent=`score ${debugStats.score===null?'none':debugStats.score.toFixed(2)} · fps ${debugStats.fps.toFixed(1)} · x ${x===null?'—':Math.round(x*100)+'%'} · lane ${lane===null?'—':['L','C','R'][lane-1]} · ${snapshot.mode}`+((mosquito.active||debugOn&&cameraOn)?` · motion ${debugStats.level.toFixed(2)} peak ${debugStats.peak.toFixed(2)}`:'')+(snapshot.lastResult?.kind==='DROP'?` · judged ${snapshot.lastResult.outcome} x ${snapshot.lastResult.sampledX===null?'—':Math.round(snapshot.lastResult.sampledX*100)+'%'} caught ${snapshot.lastResult.caught===null?'—':snapshot.lastResult.caught}`:'');
 }
 function pollCamera(){
   syncCameraGeometry();
@@ -330,8 +347,11 @@ function loopBody(){
     roundEnding=false;autoDrops.checked=false;banner={text:`ROUND OVER · SCORE ${snapshot.score}`,at:now};feed('Round over',`Score ${snapshot.score}`);
   }
   // Once per round, about two thirds in, the mosquito comes for the face; gold items and bombs wait while it is around.
-  if(autoDrops.checked&&!roundEnding&&!mosquitoPlanned&&waves.difficulty(now)>=.66&&snapshot.mode==='PLAYING'){mosquitoPlanned=true;startFaceMosquito();}
-  stepMosquito(now,snapshot);
+  // (once per round, retried about once a second until a face is tracked and no gold or bomb is still falling)
+  if(autoDrops.checked&&!roundEnding&&!mosquitoPlanned&&waves.difficulty(now)>=.66&&snapshot.mode==='PLAYING'&&snapshot.attacks.length===0&&now>=nextMosquitoTry){
+    nextMosquitoTry=now+1000;if(startFaceMosquito())mosquitoPlanned=true;
+  }
+  stepMosquito(now,snapshot);debugFaceMotion(now);
   if(autoDrops.checked&&!roundEnding&&!mosquito.active&&snapshot.mode==='PLAYING'&&game.connection==='ONLINE'){
     const next=waves.update(now,snapshot.attacks.length);
     if(next){const id=`wave-${++waveSerial}`;game.receiveWaveDrop({notificationId:id,messageId:id,actorId:id,receivedAt:performance.now()},next);snapshot=game.tick();}

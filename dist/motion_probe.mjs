@@ -11,7 +11,7 @@ export function grayFromRgba(rgba,width,height){
 }
 
 export class MotionProbe {
-  constructor({width=64,height=36,threshold=24,globalLimit=.5}={}) {
+  constructor({width=64,height=36,threshold=24,globalLimit=.7}={}) {
     if(!Number.isInteger(width)||!Number.isInteger(height)||width<8||height<8||!(threshold>0&&threshold<256)||!(globalLimit>0&&globalLimit<=1))throw new RangeError('INVALID_PROBE');
     Object.assign(this,{width,height,threshold,globalLimit});this.reset();
   }

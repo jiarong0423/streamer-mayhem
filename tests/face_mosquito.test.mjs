@@ -99,3 +99,27 @@ test('MOSQ-10 bad numbers are survived: NaN level counts as no motion, NaN time 
   assert.equal(m.update(NaN,face(),0),null);
   const {result}=run(m,{until:9000,level:()=>NaN});assert.equal(result.outcome,'BITE');
 });
+
+test('MOSQ-11 a null level means no new camera frame: it neither counts nor resets the swat streak',()=>{
+  const land=()=>{const m=new FaceMosquito({seed:5});m.start(0,face());let t=0,landed=null;for(;t<9000&&landed===null;t+=16){m.update(t,face(),0);if(m.snapshot(t)?.state==='LANDED')landed=t;}return {m,t,landed};};
+  const a=land();let r=a.m.update(a.t+16,face(),.6);assert.equal(r,null);
+  assert.equal(a.m.update(a.t+32,face(),null),null);assert.equal(a.m.update(a.t+48,face(),null),null);          // duplicates in between do not reset it
+  r=a.m.update(a.t+64,face(),.6);assert.equal(r.outcome,'SWAT','two real samples above the threshold, duplicates ignored');
+  const b=land();b.m.update(b.t+16,face(),.6);b.m.update(b.t+32,face(),null);b.m.update(b.t+48,face(),0);                // a real quiet frame does reset
+  assert.equal(b.m.update(b.t+64,face(),.6),null);
+  const c=land();c.m.update(c.t+16,face(),.6);assert.equal(c.m.update(c.t+32,face(),null),null,'one real frame plus a duplicate is still just one');
+});
+
+test('MOSQ-12 a huge time gap does not make it bite or arrive in one step; time going backwards is ignored and nothing grows',()=>{
+  const m=new FaceMosquito({seed:5});m.start(0,face());let t=0,landedAt=null;
+  for(;t<9000&&landedAt===null;t+=16){m.update(t,face(),0);if(m.snapshot(t)?.state==='LANDED')landedAt=t;}
+  assert.ok(landedAt);
+  const r=m.update(landedAt+5000,face(),0);assert.equal(r,null,'a 5 s stall right after landing is not a bite');
+  assert.ok(m.snapshot(landedAt+5016).landedProgress<.2,'the window was kept, not used up');
+  const before=m.history.length;
+  for(let i=0;i<200;i++){m.update(landedAt+5000,face(),0);m.update(landedAt+4000-i,face(),0);}
+  assert.ok(m.history.length<=before+2,`history ${m.history.length}`);
+  const n=new FaceMosquito({seed:5});n.start(1000,face());assert.equal(n.update(0,face(),0),null);
+  const out=n.cancel(500);assert.equal(out.ms,0,'elapsed time is never negative');
+  const s=new FaceMosquito({seed:5});s.start(0,face());s.update(60000,face(),0);assert.equal(s.snapshot(60000).state,'FLYING','one huge step does not complete the flight');
+});
