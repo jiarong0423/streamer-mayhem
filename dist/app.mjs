@@ -357,7 +357,7 @@ function loopBody(){
     if(next){const id=`wave-${++waveSerial}`;game.receiveWaveDrop({notificationId:id,messageId:id,actorId:id,receivedAt:performance.now()},next);snapshot=game.tick();}
   }
   const last=frameSource.lastFrame,anchor=cameraOn?(last?.torso??last?.nose??null):(last?.nose??null);
-  const drawn=drawArena(ctx,snapshot,anchor,{now,lastEffect,banner,mosquito:mosquito.snapshot(now),biteAt,tracking:frameSource.running&&Boolean(anchor),geometry:cameraGeometry,
+  const drawn=drawArena(ctx,snapshot,anchor,{now,lastEffect,banner,mosquito:mosquito.snapshot(now),biteAt,showMarker:debugOn,tracking:frameSource.running&&Boolean(anchor),geometry:cameraGeometry,
     backdrop:cameraOn?drawCameraBackdrop:null,marker:cameraOn});lastMarker=drawn?.position??null;
   catchFx.draw(ctx,now,fxSprites,cameraGeometry?.visible??null);updateDebug(now,snapshot);updateScreen(snapshot);
   if(now-lastOverlayUpdate>=100){lastOverlayUpdate=now;publishOverlay(snapshot);}

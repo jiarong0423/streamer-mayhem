@@ -3,7 +3,7 @@ import {dropCaught,DROP_CATCH_HALF,DROP_FLOOR} from './drop_lanes.mjs';
 import {projectCameraPoint,visiblePointToCanvas} from './camera_geometry.mjs';
 
 function roundBox(ctx,x,y,w,h,r){ctx.beginPath();ctx.roundRect(x,y,w,h,r);}
-export function drawArena(ctx,snapshot,player,{now=0,lastEffect=null,banner=null,mosquito=null,biteAt=-Infinity,tracking=true,geometry=null,backdrop=null,marker=false}={}) {
+export function drawArena(ctx,snapshot,player,{now=0,lastEffect=null,banner=null,mosquito=null,biteAt=-Infinity,showMarker=false,tracking=true,geometry=null,backdrop=null,marker=false}={}) {
   const w=ctx.canvas.width,h=ctx.canvas.height;
   ctx.clearRect(0,0,w,h);ctx.fillStyle='#101610';ctx.fillRect(0,0,w,h);
   const gradient=ctx.createRadialGradient(w*.5,h*.45,30,w*.5,h*.45,w*.6);
@@ -30,9 +30,13 @@ export function drawArena(ctx,snapshot,player,{now=0,lastEffect=null,banner=null
       if(inLane){ctx.shadowColor=danger?'rgba(255,107,90,.9)':'rgba(255,210,63,.9)';ctx.shadowBlur=h*1.5;}
       ctx.fillStyle=inLane?(danger?'#ff6b5a':'#ffd23f'):'rgba(231,241,220,.85)';ctx.beginPath();ctx.roundRect(cx-half,cy-h/2,half*2,h,h/2);ctx.fill();ctx.restore();
     }
-    if(inLane){ctx.shadowColor=danger?'rgba(255,107,90,.9)':'rgba(255,210,63,.9)';ctx.shadowBlur=ringRadius;}
-    ctx.strokeStyle=inLane?(danger?'#ff6b5a':'#ffd23f'):'#d9f965';ctx.lineWidth=inLane?6:4;ctx.beginPath();ctx.arc(position.x,position.y,ringRadius,0,2*Math.PI);ctx.stroke();ctx.shadowBlur=0;
-    ctx.fillStyle='#00ffff';ctx.beginPath();ctx.arc(position.x,position.y,5,0,2*Math.PI);ctx.fill();ctx.restore();
+    // The ring and dot on the face looked like a clown nose, so they are only drawn in debug mode (?debug=1); the catcher at the bottom is the control.
+    if(showMarker){
+      if(inLane){ctx.shadowColor=danger?'rgba(255,107,90,.9)':'rgba(255,210,63,.9)';ctx.shadowBlur=ringRadius;}
+      ctx.strokeStyle=inLane?(danger?'#ff6b5a':'#ffd23f'):'#d9f965';ctx.lineWidth=inLane?6:4;ctx.beginPath();ctx.arc(position.x,position.y,ringRadius,0,2*Math.PI);ctx.stroke();ctx.shadowBlur=0;
+      ctx.fillStyle='#00ffff';ctx.beginPath();ctx.arc(position.x,position.y,5,0,2*Math.PI);ctx.fill();
+    }
+    ctx.restore();
   } else if(position){
     const size=Math.min(1,rect.width/650,rect.height/400);
     ctx.save();ctx.beginPath();ctx.rect(rect.x,rect.y,rect.width,rect.height);ctx.clip();ctx.translate(position.x,position.y);ctx.scale(size,size);
