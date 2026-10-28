@@ -58,3 +58,10 @@ test('PROBE-06 grayFromRgba converts to luminance and rejects short buffers',()=
   const g=grayFromRgba(rgba,2,2);assert.equal(g.length,4);assert.ok(g[0]>=253);assert.equal(g[1],0);assert.ok(g[3]>g[2]&&g[2]>0);
   assert.equal(grayFromRgba(rgba,4,4),null);assert.equal(grayFromRgba(null,2,2),null);assert.equal(grayFromRgba(rgba,0,2),null);
 });
+
+test('PROBE-05 (RT3 M1) a big near-lens hand with a brightness jump still reads as motion',()=>{
+  const p=new MotionProbe();p.push(frame(100));
+  const next=frame(115);                                  // exposure rises a little while the hand covers about a fifth of the frame
+  p.push(block(next,20,8,44,28,250));
+  assert.ok(p.level({x:.5,y:.5,r:.2})>.3,`level ${p.level({x:.5,y:.5,r:.2})}`);
+});

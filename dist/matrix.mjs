@@ -172,7 +172,7 @@ export class MatrixGame {
   // Automatic waves of drops (local game logic, not chat): `fall` is this item's own fall time in ms, `variant` is 'BOMB' or omitted for a gold item.
   receiveWaveDrop(event,{column,variant,fall}={}) {
     if (![1,2,3].includes(column) || !Number.isFinite(fall) || fall < 100 || fall > 10000 || (variant !== undefined && variant !== 'BOMB')) return { accepted:false, reason:'INVALID_COMMAND' };
-    return this.#receiveAttack(event, {cell:column + 3, kind:'DROP', ...(variant ? {variant} : {}), cells:dropCells(column), warning:fall});
+    return this.#receiveAttack(event, {cell:column + 3, kind:'DROP', ...(variant ? {variant} : {}), cells:dropCells(column), warning:fall, local:true});
   }
 
   // Explicit local simulator action; chat/Bits transports never dispatch this method.
@@ -197,7 +197,7 @@ export class MatrixGame {
     for (const map of [this.notifications,this.messages]) for (const [id,time] of map) if (now-time >= this.config.dedupeTtl) map.delete(id);
     if (this.notifications.has(event.notificationId) || this.messages.has(event.messageId)) return { accepted:false, reason:'DUPLICATE' };
     for (const [map,id] of [[this.notifications,event.notificationId],[this.messages,event.messageId]]) { this.purge(map,now); map.set(id,now); }
-    if (this.connection !== 'ONLINE') return { accepted:false, reason:'OFFLINE' };
+    if (this.connection !== 'ONLINE' && !target?.local) return { accepted:false, reason:'OFFLINE' };
     if (this.mode !== 'PLAYING') return { accepted:false, reason:'NOT_PLAYING' };
     const isFreeze=target.kind==='FREEZE';
     const isAction=['MOSQUITO','LAVA'].includes(target.kind),raising=target.kind==='LAVA'&&this.actionGame.active&&this.actionGame.kind==='LAVA';

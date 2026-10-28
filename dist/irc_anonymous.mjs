@@ -32,11 +32,11 @@ export function parseIrcLine(line) {
 
 export class IrcAnonymousChat {
   constructor({game,channel,WebSocketClass=globalThis.WebSocket,endpoint=IRC_ENDPOINT,clock=()=>performance.now(),onStatus=()=>{},onDelivery=()=>{},
-    retryBaseMs=1000,retryMaxMs=15000,maxRetries=8,random=Math.random,setTimer=setTimeout,clearTimer=clearTimeout}={}) {
+    retryBaseMs=1000,retryMaxMs=15000,maxRetries=Infinity,joinTimeoutMs=10000,idleMs=360000,random=Math.random,setTimer=setTimeout,clearTimer=clearTimeout}={}) {
     if(typeof WebSocketClass!=='function')throw new TypeError('WebSocket implementation is required');
     this.channel=normalizeChannel(channel);this.endpoint=endpoint;this.WebSocketClass=WebSocketClass;
     this.adapter=new EventSubAdapter({game,clock,broadcasterId:'pending-room-id',onDelivery});
-    this.onStatus=onStatus;this.retryBaseMs=retryBaseMs;this.retryMaxMs=retryMaxMs;this.maxRetries=maxRetries;
+    this.onStatus=onStatus;this.retryBaseMs=retryBaseMs;this.retryMaxMs=retryMaxMs;this.maxRetries=maxRetries;this.joinTimeoutMs=joinTimeoutMs;this.idleMs=idleMs;this.watchdog=null;
     this.random=random;this.setTimer=setTimer;this.clearTimer=clearTimer;
     this.status='STOPPED';this.socket=null;this.timer=null;this.attempt=0;this.roomId=null;this.buffer='';
   }
@@ -48,7 +48,13 @@ export class IrcAnonymousChat {
   stop() {
     this.#cancelTimer();this.#close();this.adapter.disconnect();this.roomId=null;this.#set('STOPPED');
   }
-  #cancelTimer(){if(this.timer!==null){this.clearTimer(this.timer);this.timer=null;}}
+  #cancelTimer(){if(this.timer!==null){this.clearTimer(this.timer);this.timer=null;}this.#cancelWatchdog();}
+  #cancelWatchdog(){if(this.watchdog!==null){this.clearTimer(this.watchdog);this.watchdog=null;}}
+  // One timer for liveness: before ROOMSTATE it is the join timeout, after it the idle limit (Twitch pings about every 5 minutes, so silence means a half-open socket).
+  #arm(socket,ms,reason){
+    this.#cancelWatchdog();
+    this.watchdog=this.setTimer(()=>{this.watchdog=null;if(this.socket!==socket)return;this.#close();this.#retry(reason);},ms);
+  }
   #close() {
     const socket=this.socket;this.socket=null;
     if(socket){socket.onopen=socket.onmessage=socket.onclose=socket.onerror=null;try{socket.close();}catch{/* already closed */}}
@@ -57,14 +63,14 @@ export class IrcAnonymousChat {
     this.#set(this.attempt?'RETRYING':'CONNECTING');this.roomId=null;this.buffer='';
     let socket;
     try{socket=new this.WebSocketClass(this.endpoint);}catch{this.#retry('SOCKET_ERROR');return;}
-    this.socket=socket;
+    this.socket=socket;this.#arm(socket,this.joinTimeoutMs,'JOIN_TIMEOUT');
     socket.onopen=()=>{
       if(this.socket!==socket)return;
       const nick=`justinfan${10000+Math.floor(this.random()*80000)}`;
       socket.send('CAP REQ :twitch.tv/tags twitch.tv/commands');socket.send('PASS SCHMOOPIIE');socket.send(`NICK ${nick}`);socket.send(`JOIN #${this.channel}`);
     };
-    socket.onmessage=event=>{if(this.socket===socket)this.#receive(String(event.data));};
-    const lost=()=>{if(this.socket!==socket)return;this.socket=null;this.adapter.disconnect();this.#retry('CONNECTION_LOST');};
+    socket.onmessage=event=>{if(this.socket!==socket)return;if(this.roomId)this.#arm(socket,this.idleMs,'IDLE_TIMEOUT');this.#receive(String(event.data));};
+    const lost=()=>{if(this.socket!==socket)return;this.#cancelWatchdog();this.socket=null;this.adapter.disconnect();this.#retry('CONNECTION_LOST');};
     socket.onclose=lost;socket.onerror=lost;
   }
   #retry(reason) {
@@ -86,7 +92,7 @@ export class IrcAnonymousChat {
     if(command==='RECONNECT'){this.#close();this.adapter.disconnect();this.attempt=0;this.#open();return;}
     if(params[0]!==`#${this.channel}`)return;
     if(command==='ROOMSTATE' && /^[0-9]{1,20}$/.test(tags['room-id']??'') && !this.roomId){
-      this.roomId=tags['room-id'];this.adapter.broadcasterId=this.roomId;this.attempt=0;
+      this.roomId=tags['room-id'];this.adapter.broadcasterId=this.roomId;this.attempt=0;this.#arm(this.socket,this.idleMs,'IDLE_TIMEOUT');
       this.adapter.ingest(syntheticWelcome());this.#set('ONLINE');return;
     }
     if(command!=='PRIVMSG' || !this.roomId || tags['room-id']!==this.roomId)return;

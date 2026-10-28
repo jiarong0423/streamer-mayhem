@@ -19,6 +19,12 @@ import {createCameraGeometry,centerCrop,projectCameraPoint,projectCameraFrame,ca
 import {makeOverlayState,OVERLAY_CLOSED_TYPE} from './overlay_protocol.mjs';
 import {SyntheticFrameSource} from './frame_source.mjs';
 
+// One line for the activity feed, by what the chat command really was (the adapter keeps the game's `kind`).
+function describeDelivery(result){
+  if(result.kind==='FACE_MOSQUITO')return '!mosquito · watch your face';
+  if(result.kind==='DROP'){const lane=(result.cells?.[0]??result.cell-3);return result.variant==='BOMB'?`!bomb ${lane} · dodge it`:`!drop ${lane} · get under it`;}
+  return `!throw ${result.cell} · 0.5 s warning`;
+}
 const $ = selector => document.querySelector(selector);
 const canvas=$('#arena'),ctx=canvas.getContext('2d');
 const player={x:.5,y:.5};
@@ -82,9 +88,12 @@ function currentFace(){
 }
 // A short hint on the arena (the banner slot); it is removed when the mosquito is settled.
 function showHint(text,now){banner=mosquitoHint={text,at:now};}
-function startFaceMosquito(){
-  if(mosquito.active||game.mode!=='PLAYING'){game.refundFaceMosquito();return false;}
-  const face=currentFace();if(!face){feed('No face yet','The mosquito needs a tracked face');game.refundFaceMosquito();return false;}
+let noFaceFeedAt=-Infinity;
+// `chat` = the cooldown was charged by a real !mosquito, so a failed start gives it back; the button and the round planner never charged one.
+function startFaceMosquito({chat=false}={}){
+  const refund=()=>{if(chat)game.refundFaceMosquito();};
+  if(mosquito.active||game.mode!=='PLAYING'){refund();return false;}
+  const face=currentFace();if(!face){const t=performance.now();if(t-noFaceFeedAt>5000){noFaceFeedAt=t;feed('No face yet','The mosquito needs a tracked face');}refund();return false;}
   probe.reset();swatFrames=0;lastProbeTime=-1;
   if(!mosquito.start(performance.now(),face))return false;
   mosquitoDemo=mosquitoCount++===0;landedHinted=false;
@@ -155,7 +164,7 @@ const game=new MatrixGame({onEvent:event=>{
     if(event.kind==='FACE_MOSQUITO')sfx.mosquitoLoop.stop();
     const titles={HIT:'Ouch, hit!',DODGE:'Nice dodge',CATCH:'Caught it!',MISS:'Missed it',BOMB:'Boom! Bomb caught',AVOID:'Bomb dodged',SWAT:'Swatted it!',BITE:'Bitten!'};
     feed(titles[event.outcome]??'Undetermined',`${challengeNames[event.kind]??`Target cell ${event.cell}`} · ${event.outcome}`);
-  } else if(event.type==='faceMosquito')startFaceMosquito();
+  } else if(event.type==='faceMosquito')startFaceMosquito({chat:true});
   else if(event.type==='lavaBurn')feed('Lava burn',`HP ${event.hpDelta} · stand to avoid the lava`);
   else if(event.type==='ringOut')feed('Character left the arena','Out of bounds');
 }});
@@ -176,7 +185,7 @@ const chatTransport=new MockEventSubTransport({adapter,oauth,profile:'chat',onSt
   const labels={CONNECTING:'Local chat connecting',SUBSCRIBING:'Local chat subscribing',ONLINE:'Local chat subscribed',MIGRATING:'Local subscription migrating',RETRYING:'Local chat reconnecting',STOPPED:'Local chat stopped'};
   if(chatMode)$('#connection-badge').textContent=labels[status]??status;
   if(detail==='AUTH_REQUIRED')feed('Simulated authorization expired','Stop and re-authorize');
-},onDelivery:result=>{if(result.accepted)feed('Local chat attack',`!throw ${result.cell} · 0.5 s warning`);}});
+},onDelivery:result=>{if(result.accepted)feed('Local chat attack',describeDelivery(result));}});
 const popupController=['http://127.0.0.1:4173','http://localhost:4173'].includes(location.origin)?new AuthPopupController({oauth,origin:location.origin,
   openWindow:url=>window.open(url,'streamer-mayhem-local-auth','popup,width=520,height=420'),
   onState:state=>{
@@ -194,7 +203,7 @@ const transport=new MockEventSubTransport({adapter,onStatus:(status,detail)=>{
   if(mockMode)$('#connection-badge').textContent=status==='RETRYING' && detail.startsWith('SUBSCRIPTION_')?'CLI subscription failed, retrying':labels[status]??status;
   if(detail==='REVOKED')feed('Mock subscription revoked','Auto-reconnect stopped');
 },onDelivery:result=>{
-  if(result.accepted)feed('Local mock attack',`!throw ${result.cell} · 0.5 s warning`);
+  if(result.accepted)feed('Local mock attack',describeDelivery(result));
 }});
 
 // Synthetic state is relayed only through the same loopback server, in memory.
@@ -396,7 +405,7 @@ function loopBody(){
   // Automatic waves (local game logic): irregular gold items and bombs while the round is playing and the box is ticked.
   // A round is 75 s: after that no new drops start, and when the last one has landed the round ends with a summary banner.
   if(autoDrops.checked&&waves.difficulty(now)>=1)roundEnding=true;
-  if(roundEnding&&snapshot.attacks.length===0){
+  if(roundEnding&&(snapshot.attacks.length===0||now>waves.startedAt+waves.roundMs+8000)){
     roundEnding=false;autoDrops.checked=false;const grade=gradeFor(snapshot.score);
     banner={text:`ROUND OVER · SCORE ${snapshot.score}`,at:now,grade};feed('Round over',`Score ${snapshot.score}${grade?` · grade ${grade}`:''}`);
     sfx.play('roundEnd');if(session.phase==='running')session.phase='over';syncStart();
@@ -408,8 +417,10 @@ function loopBody(){
   }
   stepMosquito(now,snapshot);debugFaceMotion(now);
   const mosquitoNow=mosquito.snapshot(now);updateSound(snapshot,mosquitoNow);stepSession(now);
-  if(autoDrops.checked&&!roundEnding&&!mosquito.active&&snapshot.mode==='PLAYING'&&game.connection==='ONLINE'){
-    const next=waves.update(now,snapshot.attacks.length);
+  if(autoDrops.checked&&!roundEnding&&!mosquito.active&&snapshot.mode==='PLAYING'&&(game.connection==='ONLINE'||(ircChat&&ircChat.status!=='STOPPED'))){
+    // From two thirds in, while a face is tracked and the mosquito has not come yet, stop new drops so the screen can empty for it.
+    const holdForMosquito=!mosquitoPlanned&&waves.difficulty(now)>=.66&&Boolean(currentFace());
+    const next=holdForMosquito?null:waves.update(now,snapshot.attacks.length);
     if(next){const id=`wave-${++waveSerial}`;game.receiveWaveDrop({notificationId:id,messageId:id,actorId:id,receivedAt:performance.now()},next);snapshot=game.tick();}
   }
   const last=frameSource.lastFrame,anchor=cameraOn?(last?.torso??last?.nose??null):(last?.nose??null);
@@ -594,7 +605,7 @@ function startProvider(mode){
       if(labels[status]){$('#provider-status').textContent=`${prefix}: ${labels[status]}`;$('#connection-badge').textContent=`${prefix}: ${labels[status]}`;}
       if(status==='STOPPED'&&detail)finishProvider(detail==='AUTH_REQUIRED'?'Authorization expired; re-authorize.':'Subscription stopped; re-authorize.');
     },
-    onDelivery:result=>{if(result.accepted)feed(`${prefix}Chat attack`,`!throw ${result.cell} · 0.5 s warning`);}
+    onDelivery:result=>{if(result.accepted)feed(`${prefix}Chat attack`,describeDelivery(result));}
   });
   const activation=new ProviderActivation({provider,origin:location.origin,
     openWindow:url=>window.open(url,'streamer-mayhem-provider-auth','popup,width=520,height=420'),
@@ -628,7 +639,7 @@ $('#irc-start').addEventListener('click',()=>{
       if(labels[status]){$('#irc-status').textContent=labels[status];$('#connection-badge').textContent=`Twitch chat: ${labels[status]}`;}
       if(status==='STOPPED')stopIrc(`Connection stopped (${detail??'unknown'}); press Connect to retry.`);
     },
-    onDelivery:result=>{if(result.accepted)feed('Twitch chat attack',`!throw ${result.cell} · 0.5 s warning`);}});
+    onDelivery:result=>{if(result.accepted)feed('Twitch chat attack',describeDelivery(result));}});
   ircChat=chat;adapter.disconnect();syncProviderControls();chat.start();
 });
 
@@ -677,9 +688,10 @@ $('#reset').addEventListener('click',()=>{
   addSyntheticFrame();game.tick();
   $('#command-feedback').textContent='Try !throw 1–9, !drop 1–3, !bomb 1–3, !freeze, !mosquito or !lava';feed('Round reset','HP and score reset');
 });
+let hiddenAt=null;
 document.addEventListener('visibilitychange',()=>{
-  if(document.hidden){sfx.suspend();frameSource.stop();if(game.mode==='PLAYING'||game.mode==='TRACKING_LOST'||game.mode==='RECOVERING')game.pause();feed('Game paused','Judging pauses while the page is hidden');const snapshot=game.tick();updateScreen(snapshot);publishOverlay(snapshot,{force:true});}
-  else{sfx.resume();frameSource.start();stabilizer.reset();}   // back on screen: judging frames may flow again (the game itself still waits for Resume)
+  if(document.hidden){hiddenAt=performance.now();sfx.suspend();frameSource.stop();if(game.mode==='PLAYING'||game.mode==='TRACKING_LOST'||game.mode==='RECOVERING')game.pause();feed('Game paused','Judging pauses while the page is hidden');const snapshot=game.tick();updateScreen(snapshot);publishOverlay(snapshot,{force:true});}
+  else{if(hiddenAt!==null){const d=performance.now()-hiddenAt;hiddenAt=null;waves.startedAt+=d;waves.nextAt+=d;nextMosquitoTry+=d;}sfx.resume();frameSource.start();stabilizer.reset();}   // back on screen: judging frames may flow again (the game itself still waits for Resume)
 });
 window.addEventListener('pagehide',()=>{stopOverlaySync();cancelAnimationFrame(animationId);transport.stop();chatTransport.stop();cameraTracker?.stop();popupController?.dispose();providerActivation?.stop();ircChat?.stop();oauth.clear();});
 

@@ -37,7 +37,7 @@ export class EventSubAdapter {
     const chat={notificationId:data.metadata.message_id,messageId:event?.message_id,
       actorId:event?.chatter_user_id,text:event?.message?.text,receivedAt:this.clock()};
     const delivery=this.game.receiveChat(chat);
-    const output={...delivery,kind:'chat'};
+    const output={kind:'chat',...delivery};
     this.onDelivery(output);
     return output;
   }

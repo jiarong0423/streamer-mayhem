@@ -11,7 +11,7 @@ export function grayFromRgba(rgba,width,height){
 }
 
 export class MotionProbe {
-  constructor({width=64,height=36,threshold=24,globalLimit=.7,ringWeight=.7}={}) {
+  constructor({width=64,height=36,threshold=24,globalLimit=.45,ringWeight=.7}={}) {
     if(!Number.isInteger(width)||!Number.isInteger(height)||width<8||height<8||!(threshold>0&&threshold<256)||!(globalLimit>0&&globalLimit<=1))throw new RangeError('INVALID_PROBE');
     if(!(ringWeight>=0&&ringWeight<=1.5))throw new RangeError('INVALID_PROBE');
     Object.assign(this,{width,height,threshold,globalLimit,ringWeight});this.reset();
@@ -23,9 +23,18 @@ export class MotionProbe {
   push(gray){
     if(!gray||gray.length!==this.width*this.height)return false;
     if(this.prev){
-      const n=gray.length;let sum=0;
-      for(let i=0;i<n;i++)sum+=gray[i]-this.prev[i];
-      const shift=sum/n,changed=new Uint8Array(n);let count=0;
+      const n=gray.length,hist=new Int32Array(511);let sum=0;
+      for(let i=0;i<n;i++){const d=gray[i]-this.prev[i];sum+=d;hist[d+255]++;}
+      // The shift is the most common difference (a window of +-6 levels), not the mean: a big hand over the lens pulls the mean and would make the
+      // whole background look changed. Ties go to the value nearest the mean.
+      const mean=sum/n;let best=Math.round(mean),bestCount=-1,win=0;
+      for(let k=0;k<=12&&k<511;k++)win+=hist[k];
+      for(let c=-255;c<=255;c++){
+        const lo=c-6+255,hi=c+6+255;
+        if(c>-255){if(lo-1>=0)win-=hist[lo-1];if(hi<=510)win+=hist[hi];}
+        if(win>bestCount||(win===bestCount&&Math.abs(c-mean)<Math.abs(best-mean))){bestCount=win;best=c;}
+      }
+      const shift=best,changed=new Uint8Array(n);let count=0;
       for(let i=0;i<n;i++){if(Math.abs(gray[i]-this.prev[i]-shift)>=this.threshold){changed[i]=1;count++;}}
       this.changed=changed;this.globalChange=count/n;
     }

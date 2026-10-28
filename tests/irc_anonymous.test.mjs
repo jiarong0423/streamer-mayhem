@@ -19,7 +19,7 @@ function fixture(options={}) {
   const p={x:.5,y:.5,visibility:1};game.addFrame({frameId:'0',captureTime:0,nose:p,leftShoulder:p,rightShoulder:p});game.tick();
   const chat=new IrcAnonymousChat({game,channel:'#SomeChannel',WebSocketClass:FakeSocket,clock:()=>time.now,
     onStatus:(s,d)=>statuses.push(d?`${s}:${d}`:s),onDelivery:d=>delivered.push(d),random:()=>0,
-    setTimer:(fn,ms)=>{timers.push({fn,ms});return timers.length;},clearTimer:()=>{},...options});
+    setTimer:(fn,ms)=>{const t={fn,ms,cleared:false};timers.push(t);return t;},clearTimer:t=>{if(t)t.cleared=true;},...options});
   return {time,game,chat,statuses,timers,delivered,socket:()=>FakeSocket.instances.at(-1)};
 }
 const roomstate='@room-id=123;emote-only=0 :tmi.twitch.tv ROOMSTATE #somechannel\r\n';
@@ -72,9 +72,27 @@ test('PING is answered and RECONNECT opens a fresh socket',()=>{
 });
 test('connection loss goes offline, retries with backoff, then stops after the limit',()=>{
   const f=fixture({maxRetries:2});f.chat.start();f.socket().open();f.socket().push(roomstate);
-  f.socket().drop();assert.equal(f.game.connection,'OFFLINE');assert.equal(f.chat.status,'RETRYING');assert.equal(f.timers[0].ms,1000);
-  f.timers[0].fn();assert.equal(FakeSocket.instances.length,2);f.socket().drop();assert.equal(f.timers[1].ms,2000);
-  f.timers[1].fn();f.socket().drop();assert.equal(f.chat.status,'STOPPED');assert.match(f.statuses.at(-1),/STOPPED:CONNECTION_LOST/);
+  const retry=()=>f.timers.filter(t=>!t.cleared&&t.ms!==10000&&t.ms!==360000);
+  f.socket().drop();assert.equal(f.game.connection,'OFFLINE');assert.equal(f.chat.status,'RETRYING');assert.equal(retry()[0].ms,1000);
+  retry()[0].fn();assert.equal(FakeSocket.instances.length,2);f.socket().drop();assert.equal(retry().at(-1).ms,2000);
+  retry().at(-1).fn();f.socket().drop();assert.equal(f.chat.status,'STOPPED');assert.match(f.statuses.at(-1),/STOPPED:CONNECTION_LO/);
+});
+test('retries never give up by default and the delay stays capped (RT3 I4)',()=>{
+  const f=fixture();f.chat.start();
+  for(let i=0;i<30;i++){f.socket().drop();const t=f.timers.filter(x=>!x.cleared&&x.ms!==10000&&x.ms!==360000).at(-1);assert.ok(t.ms<=15000);t.cleared=true;t.fn();}
+  assert.equal(f.chat.status,'RETRYING'.length?f.chat.status:'');assert.notEqual(f.chat.status,'STOPPED');
+});
+test('no ROOMSTATE within the join timeout reconnects (RT3 I3)',()=>{
+  const f=fixture();f.chat.start();f.socket().open();const first=f.socket();
+  const join=f.timers.find(t=>t.ms===10000&&!t.cleared);join.fn();
+  assert.equal(first.closed,true);assert.equal(f.chat.status,'RETRYING');assert.match(f.statuses.at(-1),/JOIN_TIMEOUT/);
+});
+test('a silent but open socket is replaced after the idle limit, and any line resets it (RT3 I2)',()=>{
+  const f=fixture();f.chat.start();f.socket().open();f.socket().push(roomstate);
+  const idle1=f.timers.filter(t=>t.ms===360000&&!t.cleared).at(-1);
+  f.socket().push(':tmi.twitch.tv PING\r\n');assert.equal(idle1.cleared,true);
+  const idle2=f.timers.filter(t=>t.ms===360000&&!t.cleared).at(-1);const first=f.socket();idle2.fn();
+  assert.equal(first.closed,true);assert.equal(f.chat.status,'RETRYING');assert.match(f.statuses.at(-1),/IDLE_TIMEOUT/);
 });
 test('stop closes the socket and leaves the game offline',()=>{
   const f=fixture();f.chat.start();f.socket().open();f.socket().push(roomstate);
