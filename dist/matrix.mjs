@@ -47,6 +47,15 @@ export function parseBombCommand(text) {
 }
 export const dropCells = column => [column, column + 3, column + 6];
 
+// Round grade from the final score: S 1600, A 1000, B 500, below that no grade (null).
+export function gradeFor(score) {
+  if (!finite(score)) return null;
+  return score >= 1600 ? 'S' : score >= 1000 ? 'A' : score >= 500 ? 'B' : null;
+}
+// Combo multiplier for catches and bomb dodges: x1.5 from a streak of 5, x2 from 10.
+export const comboMultiplier = n => !finite(n) ? 1 : n >= 10 ? 2 : n >= 5 ? 1.5 : 1;
+const MISS_LIMIT = 3;
+
 export class MatrixGame {
   constructor({ clock = () => performance.now(), onEvent = () => {}, options = {} } = {}) {
     this.clock = clock;
@@ -75,7 +84,7 @@ export class MatrixGame {
   reset() {
     this.wall = this.clock();
     if (!finite(this.wall)) throw new RangeError('Clock must be finite');
-    this.gameTime = 0; this.hp = 100; this.score = 0; this.mode = 'IDLE';
+    this.gameTime = 0; this.hp = 100; this.score = 0; this.combo = 0; this.missStreak = 0; this.mode = 'IDLE';
     this.connection = 'OFFLINE'; this.attacks = []; this.results = []; this.latestFrame = null;
     this.frames = []; this.seenFrameIds = new Set(); this.frameIdOrder = []; this.minCaptureTime = -Infinity;
     this.outSince = null; this.outPenalized = false; this.recoveryUntil = null;
@@ -245,13 +254,17 @@ export class MatrixGame {
     const hpBefore = this.hp, scoreBefore = this.score;
     if (outcome === 'HIT') this.hp = Math.max(0,this.hp-this.config.damage);
     if (outcome === 'DODGE') this.score += this.config.dodgeScore;
-    if (outcome === 'CATCH') this.score += this.config.dropScore;
-    if (outcome === 'AVOID') this.score += this.config.avoidScore;
-    if (outcome === 'BOMB') this.score = Math.max(0, this.score - this.config.bombPenalty);
+    // Combo: consecutive CATCH or AVOID build it (x1.5 at 5, x2 at 10, applied to those two scores only); a caught bomb, or three gold items missed in a row, ends it.
+    let multiplier = 1;
+    if (outcome === 'CATCH' || outcome === 'AVOID') { this.combo++; multiplier = comboMultiplier(this.combo); }
+    if (outcome === 'CATCH') { this.missStreak = 0; this.score += Math.round(this.config.dropScore * multiplier); }
+    if (outcome === 'AVOID') this.score += Math.round(this.config.avoidScore * multiplier);
+    if (outcome === 'BOMB') { this.score = Math.max(0, this.score - this.config.bombPenalty); this.combo = 0; this.missStreak = 0; }
+    if (outcome === 'MISS' && ++this.missStreak >= MISS_LIMIT) { this.combo = 0; this.missStreak = 0; }
     const result = { eventId:attack.eventId, cell:attack.cell,
       ...(attack.cells ? {kind:attack.kind,cells:[...attack.cells]} : {}), outcome, sampledFrameId:frame?.frameId ?? null,
       sampledAt:atWall, hpDelta:this.hp-hpBefore, scoreDelta:this.score-scoreBefore,
-      ...(attack.kind === 'DROP' ? {sampledX:point ? point.x : null, caught, ...(bomb ? {variant:'BOMB'} : {})} : {}) };
+      ...(attack.kind === 'DROP' ? {sampledX:point ? point.x : null, caught, ...(bomb ? {variant:'BOMB'} : {}), combo:this.combo, multiplier} : {}) };
     this.recordResult(result);
     if (this.hp === 0) { this.mode='ROUND_END'; this.emit('status',{status:'ROUND_END'}); }
     return result;
@@ -308,7 +321,7 @@ export class MatrixGame {
     const hpBefore = this.hp, scoreBefore = this.score;
     if (outcome === 'SWAT') this.score += this.config.faceSwatScore;
     if (outcome === 'DODGE') this.score += this.config.faceDodgeScore;
-    if (outcome === 'BITE') { this.hp = Math.max(0, this.hp - this.config.faceBiteDamage); this.score = Math.max(0, this.score - this.config.faceBitePenalty); }
+    if (outcome === 'BITE') { this.hp = Math.max(0, this.hp - this.config.faceBiteDamage); this.score = Math.max(0, this.score - this.config.faceBitePenalty); this.combo = 0; this.missStreak = 0; }
     const result = { eventId:`face-mosquito-${++this.faceMosquitoSerial}`, cell:5, kind:'FACE_MOSQUITO', outcome, reason:String(reason ?? ''), approaches,
       sampledFrameId:null, sampledAt:this.wall, hpDelta:this.hp-hpBefore, scoreDelta:this.score-scoreBefore };
     this.recordResult(result);
@@ -392,7 +405,7 @@ export class MatrixGame {
 
   snapshot() {
     return { mode:this.mode, connection:this.connection, wallTime:this.wall, gameTime:this.gameTime,
-      hp:this.hp, score:this.score, attacks:this.attacks.map(a=>({...a,...(a.cells?{cells:[...a.cells]}:{}),
+      hp:this.hp, score:this.score, combo:this.combo, multiplier:comboMultiplier(this.combo), attacks:this.attacks.map(a=>({...a,...(a.cells?{cells:[...a.cells]}:{}),
         ...(a.kind==='DROP'?{progress:Math.max(0,Math.min(1,a.due>a.start?(this.gameTime-a.start)/(a.due-a.start):1))}:{})})),
       lastResult:this.results.length ? {...this.results[this.results.length-1],
         ...(this.results.at(-1).cells?{cells:[...this.results.at(-1).cells]}:{})} : null,
