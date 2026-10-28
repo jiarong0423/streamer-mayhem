@@ -20,10 +20,10 @@ Codex was the main developer. In Codex sessions we designed the shared rules cor
 
 ## Codex session ID
 Official wording: the thread where most of the project was built (type `/status` in Codex).
-`<<FILL IN: session ID of the main Codex thread>>`
+`01a17dbb-1e9d-7331-8e99-750df636fd8b`
 
 ## Repository
-`<<FILL IN: repository URL>>` (if private on GitHub or GitLab, share with testing@devpost.com)
+https://github.com/jiarong0423/streamer-mayhem (private; shared with testing@devpost.com)
 
 ## Demo video
 `<<FILL IN: public YouTube URL, under 3:00>>`
