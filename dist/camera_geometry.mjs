@@ -17,6 +17,14 @@ export function createCameraGeometry({canvasWidth,canvasHeight,viewport,sourceWi
   if(![image.x,image.y,image.width,image.height,visible.x,visible.y,visible.width,visible.height].every(finite) || visible.width<=0 || visible.height<=0)throw new RangeError('INVALID_GEOMETRY');
   return Object.freeze({canvasWidth,canvasHeight,viewport:Object.freeze({...viewport}),sourceWidth,sourceHeight,crop:Object.freeze({...crop}),fit,mirror,rotation,image:Object.freeze(image),visible:Object.freeze(visible)});
 }
+// Crop that makes the visible region a window `span` face-widths wide around a detected face (same fraction on both axes, so aspect is kept).
+// The face sits at `faceY` of the window height (below the middle) so there is room above the head for things to fall; it is clamped to the frame.
+// `face` is {cx,cy,fw} normalized to the source frame. Returns null without a usable face.
+export function centerCrop(face,span=5,faceY=.55) {
+  if(!face || ![face.cx,face.cy,face.fw].every(finite) || !(face.fw>0) || !(span>0) || !(faceY>=0&&faceY<=1))return null;
+  const size=Math.min(1,Math.max(.3,face.fw*span)),left=Math.min(1-size,Math.max(0,face.cx-size/2)),top=Math.min(1-size,Math.max(0,face.cy-faceY*size));
+  return {left,right:1-size-left,top,bottom:1-size-top};
+}
 function rotate(u,v,r){switch(r){case 90:return [1-v,u];case 180:return [1-u,1-v];case 270:return [v,1-u];default:return [u,v];}}
 function unrotate(u,v,r){switch(r){case 90:return [v,1-u];case 180:return [1-u,1-v];case 270:return [1-v,u];default:return [u,v];}}
 

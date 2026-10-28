@@ -57,7 +57,8 @@ export function drawMatrix(ctx, snapshot, { viewWidth, viewHeight, sourceWidth, 
 }
 
 // Transparent compositing layer: only the calibrated visible camera rectangle is touched.
-export function drawCameraOverlay(ctx,geometry,snapshot,{clear=true}={}) {
+// The nine-cell grid is not drawn unless `grid` is true (calibration view); cells are still computed for judging and attack highlights.
+export function drawCameraOverlay(ctx,geometry,snapshot,{clear=true,grid=false}={}) {
   if(clear)ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);
   if(!geometry)return {rect:null,cells:[]};
   const rect=geometry.visible,cells=gridRects(rect);
@@ -65,8 +66,37 @@ export function drawCameraOverlay(ctx,geometry,snapshot,{clear=true}={}) {
   ctx.save();ctx.beginPath();ctx.rect(rect.x,rect.y,rect.width,rect.height);ctx.clip();
   ctx.strokeStyle='rgba(220,238,210,.7)';ctx.lineWidth=Math.max(1,Math.min(3,rect.width/320));
   ctx.fillStyle='rgba(240,255,229,.9)';ctx.font=`700 ${fontSize}px monospace`;
-  for(const cell of cells){ctx.strokeRect(cell.x,cell.y,cell.width,cell.height);ctx.fillText(String(cell.cell),cell.x+4,cell.y+fontSize+3);}
-  for(const attack of snapshot.attacks??[])for(const target of attack.cells??[attack.cell]){const cell=cells[target-1];if(cell){ctx.fillStyle='rgba(250,83,57,.35)';ctx.fillRect(cell.x,cell.y,cell.width,cell.height);}}
+  if(grid)for(const cell of cells){ctx.strokeRect(cell.x,cell.y,cell.width,cell.height);ctx.fillText(String(cell.cell),cell.x+4,cell.y+fontSize+3);}
+  for(const attack of snapshot.attacks??[]){
+    if(attack.kind==='DROP'){
+      // Catch mode: a small golden orb falls down one column; being in that column when it lands scores.
+      // A soft column guide, a landing ring that tightens as it nears, a short trail and a glow keep it readable without hiding the face.
+      const top=cells[attack.cells[0]-1];if(!top)continue;
+      const cx=top.x+top.width/2,radius=Math.max(4,Math.min(top.width/12,rect.height/22)),p=Math.max(0,Math.min(1,attack.progress??0));
+      const y=rect.y+radius*2+p*(rect.height-radius*4),floor=rect.y+rect.height-radius*1.5;
+      const guide=ctx.createLinearGradient(0,rect.y,0,rect.y+rect.height);
+      guide.addColorStop(0,'rgba(217,249,101,0)');guide.addColorStop(1,'rgba(217,249,101,.16)');
+      ctx.fillStyle=guide;ctx.fillRect(top.x,rect.y,top.width,rect.height);
+      ctx.strokeStyle=`rgba(217,249,101,${(.25+.55*p).toFixed(3)})`;ctx.lineWidth=Math.max(1.5,radius/4);
+      ctx.beginPath();ctx.ellipse(cx,floor,radius*(3-1.6*p),radius*(1.1-.5*p),0,0,2*Math.PI);ctx.stroke();
+      for(let i=3;i>=1;i--){ctx.fillStyle=`rgba(255,210,63,${(.09*(4-i)).toFixed(3)})`;ctx.beginPath();ctx.arc(cx,y-i*radius*1.1,radius*(1-.2*i),0,2*Math.PI);ctx.fill();}
+      const glow=ctx.createRadialGradient(cx,y,radius*.2,cx,y,radius*2.8);
+      glow.addColorStop(0,'rgba(255,214,90,.5)');glow.addColorStop(1,'rgba(255,214,90,0)');
+      ctx.fillStyle=glow;ctx.beginPath();ctx.arc(cx,y,radius*2.8,0,2*Math.PI);ctx.fill();
+      const orb=ctx.createRadialGradient(cx-radius*.35,y-radius*.4,radius*.1,cx,y,radius);
+      orb.addColorStop(0,'#fff6bf');orb.addColorStop(.55,'#ffd23f');orb.addColorStop(1,'#e59a14');
+      ctx.fillStyle=orb;ctx.beginPath();ctx.arc(cx,y,radius,0,2*Math.PI);ctx.fill();
+      continue;
+    }
+    // Attack: only the targeted cells light up, with a soft rounded fill and the cell number, so no grid is needed on screen.
+    for(const target of attack.cells??[attack.cell]){
+      const cell=cells[target-1];if(!cell)continue;
+      const inset=Math.max(2,cell.width/60);
+      ctx.fillStyle='rgba(250,83,57,.30)';ctx.strokeStyle='rgba(255,140,112,.85)';ctx.lineWidth=Math.max(1.5,cell.width/160);
+      ctx.beginPath();ctx.roundRect(cell.x+inset,cell.y+inset,cell.width-2*inset,cell.height-2*inset,Math.max(4,cell.width/24));ctx.fill();ctx.stroke();
+      if(!attack.cells){ctx.fillStyle='rgba(255,236,230,.9)';ctx.font=`800 ${Math.max(10,cell.height/5)}px sans-serif`;ctx.textAlign='center';ctx.fillText(String(target),cell.x+cell.width/2,cell.y+cell.height/2+cell.height/16);ctx.textAlign='left';}
+    }
+  }
   drawChallengeOverlay(ctx,rect,snapshot,fontSize);
   if(snapshot.mode==='TRACKING_LOST'||snapshot.mode==='PAUSED'||snapshot.mode==='RECOVERING'){
     ctx.fillStyle='rgba(0,0,0,.65)';ctx.fillRect(rect.x,rect.y+rect.height-fontSize*1.6,rect.width,fontSize*1.6);

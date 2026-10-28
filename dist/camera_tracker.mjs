@@ -65,7 +65,7 @@ export class CameraTracker {
     if(!['face','pose'].includes(kind))throw new RangeError('INVALID_KIND');
     this.kind=kind;this.facingMode=facingMode;
     this.video=video;this.mediaDevices=mediaDevices;this.loadVision=loadVision;this.assets=assets;this.clock=clock;this.onStatus=onStatus;
-    this.lastFaceWidth=null;this.status='OFF';this.stream=null;this.landmarker=null;this.lastVideoTime=-1;this.lastStamp=-1;
+    this.lastFaceWidth=null;this.lastFace=null;this.status='OFF';this.stream=null;this.landmarker=null;this.lastVideoTime=-1;this.lastStamp=-1;
   }
   #set(status,detail){this.status=status;this.onStatus(status,detail);}
   async start() {
@@ -98,12 +98,14 @@ export class CameraTracker {
     if(this.kind==='face') {
       const detection=result?.detections?.[0],width=detection?.boundingBox?.width/this.video.videoWidth;
       this.lastFaceWidth=finite(width)&&width>0?width:null;
+      const box=detection?.boundingBox,vw=this.video.videoWidth,vh=this.video.videoHeight;
+      this.lastFace=this.lastFaceWidth&&vw>0&&vh>0?{cx:(box.originX+box.width/2)/vw,cy:(box.originY+box.height/2)/vh,fw:this.lastFaceWidth}:null;
       return {fresh:true,points:faceToPoints(detection,this.video.videoWidth,this.video.videoHeight)};
     }
     return {fresh:true,points:landmarksToPoints(result?.landmarks?.[0])};
   }
-  // Hardware/ISP zoom (cameras report a range such as 1-10x; it cannot go below 1). Sets the zoom so the face is about `target` of the frame width.
-  async zoomToFace(target=.2) {
+  // Hardware/ISP zoom (cameras report a range such as 1-10x; it cannot go below 1). Sets the zoom so the face is about `target` of the frame width (a sixth, the median in the 2026-10-28 survey of live Just Chatting channels).
+  async zoomToFace(target=1/6) {
     const track=this.stream?.getVideoTracks?.()[0],range=track?.getCapabilities?.().zoom;
     if(!range)return {ok:false,reason:'ZOOM_UNSUPPORTED'};
     if(!(this.lastFaceWidth>0))return {ok:false,reason:'NO_FACE'};
@@ -123,7 +125,7 @@ export class CameraTracker {
     try{this.landmarker?.close();}catch{/* already closed */}
     this.landmarker=null;
     for(const track of this.stream?.getTracks?.()??[])track.stop();
-    this.stream=null;this.lastFaceWidth=null;this.video.srcObject=null;this.lastVideoTime=-1;this.lastStamp=-1;
+    this.stream=null;this.lastFaceWidth=null;this.lastFace=null;this.video.srcObject=null;this.lastVideoTime=-1;this.lastStamp=-1;
   }
   stop(){this.#teardown();this.#set('OFF');}
 }

@@ -24,17 +24,25 @@ export function parseMatrixCommand(text) {
   return match ? Number(match[1]) : null;
 }
 
+// Catch mode: `!drop 1|2|3` drops an item down the left, middle or right column; the streamer catches it by being in that column when it lands.
+export function parseDropCommand(text) {
+  if (typeof text !== 'string' || text.length > 100) return null;
+  const match = /^!drop\s+([1-3])$/i.exec(text.trim());
+  return match ? Number(match[1]) : null;
+}
+export const dropCells = column => [column, column + 3, column + 6];
+
 export class MatrixGame {
   constructor({ clock = () => performance.now(), onEvent = () => {}, options = {} } = {}) {
     this.clock = clock;
     this.onEvent = onEvent;
-    this.config = { maxAge: 250, confidence: .55, warning: 500, crossWarning: 1500, recovery: 1000,
+    this.config = { maxAge: 250, confidence: .55, warning: 500, crossWarning: 1500, dropFall: 2500, dropScore: 25, recovery: 1000,
       actorCooldown: 3000, globalCooldown: 400, maxAttacks: 8, ringTime: 1000,
       ringDamage: 10, damage: 15, dodgeScore: 25, freezeDamage:12, freezeScore:100, freezeCooldown:8000,
       mosquitoDamage:5,mosquitoScore:50,lavaDamage:5,lavaScore:75,actionCooldown:8000,
       dedupeTtl: 600000, dedupeLimit: 2000, maxResults: 200,
       ring: { left: .04, right: .96, top: .04, bottom: .96 }, ...options };
-    for (const key of ['maxAge','warning','crossWarning','recovery','actorCooldown','globalCooldown','ringTime','dedupeTtl']) {
+    for (const key of ['maxAge','warning','crossWarning','dropFall','dropScore','recovery','actorCooldown','globalCooldown','ringTime','dedupeTtl']) {
       if (!finite(this.config[key]) || this.config[key] < 0) throw new RangeError(`Invalid ${key}`);
     }
     for (const key of ['maxAttacks','dedupeLimit','maxResults']) {
@@ -127,6 +135,8 @@ export class MatrixGame {
     while (map.size >= this.config.dedupeLimit) map.delete(map.keys().next().value);
   }
   receiveChat(event) {
+    const drop = parseDropCommand(event?.text);
+    if (drop !== null) return this.#receiveAttack(event, {cell:drop + 3, kind:'DROP', cells:dropCells(drop), warning:this.config.dropFall});
     const cell = parseMatrixCommand(event?.text);
     return this.#receiveAttack(event, cell === null ? null : {cell, warning:this.config.warning});
   }
@@ -192,10 +202,13 @@ export class MatrixGame {
     const frame = [...this.frames].reverse().find(f => f.captureTime <= atWall) ?? null;
     const point = this.frameUsable(frame, atWall) ? anchorPoint(frame, this.config.confidence) : null;
     const current = gridCell(point, this.config.confidence);
-    const outcome = current === null ? 'UNKNOWN' : (attack.cells ?? [attack.cell]).includes(current) ? 'HIT' : 'DODGE';
+    const inCells = current !== null && (attack.cells ?? [attack.cell]).includes(current);
+    // A drop is the reverse of an attack: being under it scores, missing it costs nothing.
+    const outcome = current === null ? 'UNKNOWN' : attack.kind === 'DROP' ? (inCells ? 'CATCH' : 'MISS') : inCells ? 'HIT' : 'DODGE';
     const hpBefore = this.hp, scoreBefore = this.score;
     if (outcome === 'HIT') this.hp = Math.max(0,this.hp-this.config.damage);
     if (outcome === 'DODGE') this.score += this.config.dodgeScore;
+    if (outcome === 'CATCH') this.score += this.config.dropScore;
     const result = { eventId:attack.eventId, cell:attack.cell,
       ...(attack.cells ? {kind:attack.kind,cells:[...attack.cells]} : {}), outcome, sampledFrameId:frame?.frameId ?? null,
       sampledAt:atWall, hpDelta:this.hp-hpBefore, scoreDelta:this.score-scoreBefore };
@@ -321,7 +334,8 @@ export class MatrixGame {
 
   snapshot() {
     return { mode:this.mode, connection:this.connection, wallTime:this.wall, gameTime:this.gameTime,
-      hp:this.hp, score:this.score, attacks:this.attacks.map(a=>({...a,...(a.cells?{cells:[...a.cells]}:{})})),
+      hp:this.hp, score:this.score, attacks:this.attacks.map(a=>({...a,...(a.cells?{cells:[...a.cells]}:{}),
+        ...(a.kind==='DROP'?{progress:Math.max(0,Math.min(1,a.due>a.start?(this.gameTime-a.start)/(a.due-a.start):1))}:{})})),
       lastResult:this.results.length ? {...this.results[this.results.length-1],
         ...(this.results.at(-1).cells?{cells:[...this.results.at(-1).cells]}:{})} : null,
       recoveryRemaining:this.mode==='RECOVERING' ? Math.max(0,this.recoveryUntil-this.wall) : 0,freeze:this.freeze.snapshot(),actionGame:this.actionGame.snapshot() };

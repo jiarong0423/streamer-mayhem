@@ -29,8 +29,8 @@
         <div class="arena-column">
           <div class="section-head"><div><span class="section-index">01 / THE ARENA</span><h2>Matrix Dodge</h2></div><span class="simulation-badge"><i></i> Synthetic input</span></div>
           <div class="arena-frame">
-            <div class="arena-toolbar"><div><span class="arena-icon">✳</span> MATRIX DODGE <span class="toolbar-muted">/ ROUND 01</span></div><div class="toolbar-mode"><span class="live-dot"></span> SIMULATED</div></div>
-            <div class="canvas-wrap"><canvas id="arena" width="1280" height="720" tabindex="0" aria-label="Arena: click a position or use the arrow keys to move the synthetic character"></canvas></div><div class="canvas-caption"><span>MOVE TO DODGE</span><span>The character uses synthetic coordinates</span></div>
+            <div class="arena-toolbar"><div><span class="arena-icon">✳</span> MATRIX DODGE <span class="toolbar-muted">/ ROUND 01</span></div><div class="toolbar-mode"><span class="live-dot"></span> SIMULATED<button id="fullscreen" class="fullscreen-button" type="button">Full screen</button></div></div>
+            <div class="canvas-wrap"><canvas id="arena" width="1920" height="1080" tabindex="0" aria-label="Arena: click a position or use the arrow keys to move the synthetic character"></canvas></div><div class="canvas-caption"><span>MOVE TO DODGE</span><span>The character uses synthetic coordinates</span></div>
             <div class="arena-footer"><div class="footer-hint"><span class="keyboard-icon">↗</span><span><b>Click the arena</b> or use the arrow keys to move</span></div><div class="movement" aria-label="Move character"><button type="button" data-move="left" aria-label="Move left">←</button><button type="button" data-move="up" aria-label="Move up">↑</button><button type="button" data-move="down" aria-label="Move down">↓</button><button type="button" data-move="right" aria-label="Move right">→</button></div><button id="reset" class="reset-button" type="button">↻ <span>Restart</span></button></div>
           </div>
           <div class="stats" aria-label="Game stats"><div class="stat"><span>STATUS</span><strong id="game-status" role="status">Ready</strong></div><div class="stat"><span>HEALTH</span><strong><span id="health">100</span><small> / 100</small></strong><div class="health-track"><i id="health-fill"></i></div></div><div class="stat"><span>SCORE</span><strong id="score">000</strong></div><div class="stat"><span>LAST MOVE</span><strong id="last-result">—</strong></div></div>
@@ -48,6 +48,8 @@
               <label>Camera <select id="camera-facing"><option value="user">Front camera (mirrored)</option><option value="environment">Rear camera</option></select></label>
               <div class="provider-actions"><button id="camera-toggle" type="button">Turn on camera tracking</button></div>
               <div class="provider-actions"><button id="camera-zoom" type="button" disabled>Auto zoom to my face</button><button id="camera-zoom-reset" type="button" disabled>Reset zoom</button></div>
+              <label class="check-row"><input id="camera-auto" type="checkbox" checked> Auto-frame (digital zoom on my face)</label>
+              <div class="provider-actions"><button id="camera-center" type="button" disabled>Center me (small-range play)</button><button id="camera-center-reset" type="button" disabled>Reset view</button></div>
               <p id="camera-status" role="status">Camera off. Keyboard or mouse input is used.</p>
               <video id="camera-video" playsinline muted style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"></video>
             </details>

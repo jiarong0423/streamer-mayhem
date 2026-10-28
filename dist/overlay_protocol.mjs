@@ -9,6 +9,11 @@ const MODES=new Set(['IDLE','PLAYING','PAUSED','TRACKING_LOST','RECOVERING','ROU
 function renderAttack(attack) {
   if(!attack || !Number.isInteger(attack.cell) || attack.cell<1 || attack.cell>9)throw new Error('INVALID_OVERLAY_STATE');
   if(attack.cells===undefined)return {cell:attack.cell};
+  if(attack.kind==='DROP'){
+    const column=attack.cell-3;
+    if(!Number.isInteger(column)||column<1||column>3||!Array.isArray(attack.cells)||attack.cells.length!==3||attack.cells.some((cell,i)=>cell!==column+i*3)||!Number.isFinite(attack.progress)||attack.progress<0||attack.progress>1)throw new Error('INVALID_OVERLAY_STATE');
+    return {cell:attack.cell,kind:'DROP',cells:[...attack.cells],progress:attack.progress};
+  }
   if(attack.cell!==5 || !Array.isArray(attack.cells) || attack.cells.length!==CROSS_CELLS.length ||
     attack.cells.some((cell,i)=>cell!==CROSS_CELLS[i]))throw new Error('INVALID_OVERLAY_STATE');
   return {cell:5,cells:[...CROSS_CELLS]};

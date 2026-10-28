@@ -52,7 +52,7 @@ test('calibration change cancels pending attacks as unknown and removes old trac
   now=200;game.addFrame(frame('new',200,p));game.tick();assert.equal(game.mode,'RECOVERING');
 });
 test('overlay drawing is clipped to visible camera region',()=>{
-  const calls=[],ctx={canvas:{width:1280,height:720},save(){},restore(){},clearRect(...v){calls.push(['clear',...v]);},beginPath(){},rect(...v){calls.push(['rect',...v]);},clip(){calls.push(['clip']);},strokeRect(){},fillText(){},fillRect(...v){calls.push(['fill',...v]);}};
+  const calls=[],ctx={canvas:{width:1280,height:720},save(){},restore(){},clearRect(...v){calls.push(['clear',...v]);},beginPath(){},rect(...v){calls.push(['rect',...v]);},clip(){calls.push(['clip']);},strokeRect(){},fillText(){},roundRect(){},fill(){},stroke(){},fillRect(...v){calls.push(['fill',...v]);}};
   const g=make();const out=drawCameraOverlay(ctx,g,{mode:'TRACKING_LOST',attacks:[{cell:9}]});assert.deepEqual(calls[1],['rect',g.visible.x,g.visible.y,g.visible.width,g.visible.height]);assert.equal(out.cells.length,9);assert.ok(calls.some(c=>c[0]==='clip'));
   assert.deepEqual(drawCameraOverlay(ctx,null,{attacks:[]}),{rect:null,cells:[]});
 });
@@ -67,4 +67,27 @@ test('cropped or low-confidence nose at impact is unknown without score or damag
     now=500;assert.equal(game.addFrame(frame('impact',now,point)),true);game.tick();
     assert.equal(game.results[0].outcome,'UNKNOWN');assert.equal(game.results[0].sampledFrameId,'impact');assert.equal(game.hp,100);assert.equal(game.score,0);assert.equal(game.mode,'TRACKING_LOST');
   }
+});
+
+test('CENTER-01 centerCrop makes a face-centred window about 5 face widths wide with the aspect kept',async()=>{
+  const {centerCrop,createCameraGeometry,projectCameraPoint}=await import('../dist/camera_geometry.mjs');
+  const crop=centerCrop({cx:.5,cy:.6,fw:.166});
+  const size=1-crop.left-crop.right;
+  assert.ok(Math.abs(size-.83)<.001);assert.ok(Math.abs((1-crop.top-crop.bottom)-size)<1e-9);
+  assert.ok(Math.abs(crop.left+size/2-.5)<1e-9);assert.ok(Math.abs(crop.top+size*.55-.6)<1e-9);
+  const g=createCameraGeometry({canvasWidth:1280,canvasHeight:720,viewport:{x:0,y:0,width:1280,height:720},sourceWidth:1280,sourceHeight:720,crop});
+  const centre=projectCameraPoint({x:.5,y:.6,visibility:1},g);
+  assert.ok(Math.abs(centre.x-.5)<1e-9&&Math.abs(centre.y-.55)<1e-9);
+  // One face width to the side moves the point by 1/5 of the visible width, i.e. a bit over half of a grid column (a column is 1/3).
+  const side=projectCameraPoint({x:.5+.166,y:.6,visibility:1},g);
+  assert.ok(Math.abs(side.x-(.5+1/5))<1e-9);
+});
+test('CENTER-02 centerCrop clamps at the frame edges, enforces a minimum window and rejects bad faces',async()=>{
+  const {centerCrop}=await import('../dist/camera_geometry.mjs');
+  const edge=centerCrop({cx:.05,cy:.95,fw:.2});
+  for(const side of ['left','right','top','bottom'])assert.ok(edge[side]>=0&&edge[side]<1);
+  assert.ok(edge.left===0&&edge.bottom===0);
+  const tiny=centerCrop({cx:.5,cy:.5,fw:.01});assert.ok(Math.abs((1-tiny.left-tiny.right)-.3)<1e-9);
+  const huge=centerCrop({cx:.5,cy:.5,fw:.9});assert.deepEqual(huge,{left:0,right:0,top:0,bottom:0});
+  for(const face of [null,undefined,{cx:.5,cy:.5,fw:0},{cx:NaN,cy:.5,fw:.2},{cx:.5,cy:.5,fw:-1}])assert.equal(centerCrop(face),null);
 });

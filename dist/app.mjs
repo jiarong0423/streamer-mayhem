@@ -8,7 +8,9 @@ import { ProviderActivation } from './provider_activation.mjs';
 import { IrcAnonymousChat, normalizeChannel } from './irc_anonymous.mjs';
 import { CameraTracker, PointStabilizer } from './camera_tracker.mjs';
 import { drawArena } from './arena_draw.mjs';
-import {createCameraGeometry,projectCameraPoint,projectCameraFrame,canvasPointToSource,visiblePointToCanvas} from './camera_geometry.mjs';
+import {AutoFrame} from './auto_frame.mjs';
+import {CatchBurst,loadSprites} from './catch_fx.mjs';
+import {createCameraGeometry,centerCrop,projectCameraPoint,projectCameraFrame,canvasPointToSource,visiblePointToCanvas} from './camera_geometry.mjs';
 import {makeOverlayState,OVERLAY_CLOSED_TYPE} from './overlay_protocol.mjs';
 import {SyntheticFrameSource} from './frame_source.mjs';
 
@@ -16,7 +18,7 @@ const $ = selector => document.querySelector(selector);
 const canvas=$('#arena'),ctx=canvas.getContext('2d');
 const player={x:.5,y:.5};
 const poseControls={spread:.1,hip:.5,leftWrist:{x:.25,y:.55},rightWrist:{x:.75,y:.55}};
-const challengeNames={CROSS:'Cross Inferno',FREEZE:'Freeze',MOSQUITO:'Mosquito',LAVA:'Lava'};
+const challengeNames={DROP:'Catch the drop',CROSS:'Cross Inferno',FREEZE:'Freeze',MOSQUITO:'Mosquito',LAVA:'Lava'};
 let cameraGeometry=createCameraGeometry({canvasWidth:canvas.width,canvasHeight:canvas.height,viewport:{x:0,y:0,width:canvas.width,height:canvas.height},sourceWidth:1280,sourceHeight:720});
 let eventId=0,tracking=true,lastEffect=null,animationId=0,mockMode=false,chatMode=false,providerActivation=null,configuredProvider=null,ircChat=null,cameraTracker=null,cameraOn=false,cameraMirror=true,cameraKindLabel='CAMERA FACE TRACKING',savedGeometry=null;
 let overlaySession=null,overlaySequence=0,lastOverlayUpdate=0,overlayInFlight=0,overlayEnabled=false;
@@ -31,10 +33,18 @@ function feed(title,detail) {
   while(list.children.length>3)list.lastElementChild.remove();
 }
 
+const catchFx=new CatchBurst();let fxSprites={},lastMarker=null;
+loadSprites().then(sprites=>{fxSprites=sprites;});
 const game=new MatrixGame({onEvent:event=>{
   if(event.type==='result'){
-    lastEffect={outcome:event.outcome,at:performance.now()};
-    feed(event.outcome==='HIT'?'Ouch, hit!':event.outcome==='DODGE'?'Nice dodge':'Undetermined',`${challengeNames[event.kind]??`Target cell ${event.cell}`} · ${event.outcome}`);
+    if(event.outcome==='CATCH'&&cameraGeometry){
+      // Burst where the streamer is (their marker), or at the bottom of the dropped column if no marker is on screen.
+      const v=cameraGeometry.visible,column=(event.cells?.[0]??event.cell-3),size=v.width/3;
+      const at=lastMarker??{x:v.x+(column-.5)*v.width/3,y:v.y+v.height*.75};catchFx.spawn(at.x,at.y,performance.now(),size*.8);
+    }
+    lastEffect={outcome:event.outcome,at:performance.now(),scoreDelta:event.scoreDelta??0};
+    const titles={HIT:'Ouch, hit!',DODGE:'Nice dodge',CATCH:'Caught it!',MISS:'Missed it'};
+    feed(titles[event.outcome]??'Undetermined',`${challengeNames[event.kind]??`Target cell ${event.cell}`} · ${event.outcome}`);
   } else if(event.type==='lavaBurn')feed('Lava burn',`HP ${event.hpDelta} · stand to avoid the lava`);
   else if(event.type==='ringOut')feed('Character left the arena','Out of bounds');
 }});
@@ -137,17 +147,35 @@ function updateScreen(snapshot){
 }
 
 // Camera tracking: the page shows the mirrored camera image under the grid; poses come from the in-browser model.
+// "Center me": the 3x3 grid covers a window about three face widths wide around the seated streamer instead of the whole camera frame,
+// so leaning one face width changes the column. Same fraction on both axes keeps the 16:9 aspect (a digital zoom).
+const NO_CROP=Object.freeze({left:0,right:0,top:0,bottom:0});
+let cameraCrop=NO_CROP;
+function buildCameraGeometry(w,h){
+  return createCameraGeometry({canvasWidth:canvas.width,canvasHeight:canvas.height,viewport:{x:0,y:0,width:canvas.width,height:canvas.height},sourceWidth:w,sourceHeight:h,mirror:cameraMirror,fit:'contain',crop:cameraCrop});
+}
+function setCameraCrop(crop){
+  cameraCrop=crop??NO_CROP;const video=$('#camera-video');
+  cameraGeometry=buildCameraGeometry(video.videoWidth||1280,video.videoHeight||720);
+  stabilizer.reset();game.invalidateTracking();frameSource.reset();
+}
 function syncCameraGeometry(){
   // The stream's size changes when the phone rotates; rebuild the grid so it always matches the visible image.
   const video=$('#camera-video'),w=video.videoWidth,h=video.videoHeight;
   if(!w||!h||!cameraGeometry||(cameraGeometry.sourceWidth===w&&cameraGeometry.sourceHeight===h))return;
-  cameraGeometry=createCameraGeometry({canvasWidth:canvas.width,canvasHeight:canvas.height,viewport:{x:0,y:0,width:canvas.width,height:canvas.height},sourceWidth:w,sourceHeight:h,mirror:cameraMirror,fit:'contain'});
+  cameraGeometry=buildCameraGeometry(w,h);
   stabilizer.reset();game.invalidateTracking();frameSource.reset();
 }
+const autoFrame=new AutoFrame();
 function pollCamera(){
   syncCameraGeometry();
   const result=cameraTracker.poll();
   if(!result.fresh)return;
+  // Automatic digital zoom: frame the face once it is steady, and again only if the person moves much closer or farther.
+  if(cameraTracker.kind==='face'&&$('#camera-auto').checked){
+    const crop=autoFrame.update(cameraTracker.lastFace,performance.now());
+    if(crop){setCameraCrop(crop);$('#camera-status').textContent='Auto-framed: the grid now covers about five face widths around you, with room above your head; lean a little to change column.';}
+  }
   if(result.points)frameSource.capture(result.points);else stabilizer.reset();
 }
 function drawCameraBackdrop(context,geometry){
@@ -155,7 +183,8 @@ function drawCameraBackdrop(context,geometry){
   const v=geometry.visible,i=geometry.image;
   context.save();context.beginPath();context.rect(v.x,v.y,v.width,v.height);context.clip();
   if(geometry.mirror){context.translate(i.x+i.width,i.y);context.scale(-1,1);}else context.translate(i.x,i.y);
-  context.drawImage(video,0,0,i.width,i.height);context.restore();
+  const c=geometry.crop,vw=video.videoWidth,vh=video.videoHeight;
+  context.drawImage(video,c.left*vw,c.top*vh,(1-c.left-c.right)*vw,(1-c.top-c.bottom)*vh,0,0,i.width,i.height);context.restore();
 }
 function setPoseLabels(text,badge){
   for(const element of document.querySelectorAll('[data-pose-label]'))element.textContent=text;
@@ -165,8 +194,7 @@ function setCameraMode(on){
   cameraOn=on;stabilizer.reset();
   if(on){
     const video=$('#camera-video');savedGeometry=cameraGeometry;
-    cameraGeometry=createCameraGeometry({canvasWidth:canvas.width,canvasHeight:canvas.height,viewport:{x:0,y:0,width:canvas.width,height:canvas.height},
-      sourceWidth:video.videoWidth||1280,sourceHeight:video.videoHeight||720,mirror:cameraMirror,fit:'contain'});
+    cameraCrop=NO_CROP;cameraGeometry=buildCameraGeometry(video.videoWidth||1280,video.videoHeight||720);
     setPoseLabels(cameraKindLabel,'Camera tracking');
     $('#camera-toggle').textContent='Turn off camera tracking';
   } else {
@@ -178,7 +206,7 @@ function setCameraMode(on){
 }
 $('#camera-toggle').addEventListener('click',async()=>{
   const button=$('#camera-toggle');
-  if(cameraOn||cameraTracker){cameraTracker?.stop();cameraTracker=null;$('#camera-zoom').disabled=true;$('#camera-zoom-reset').disabled=true;$('#camera-facing').disabled=false;$('#camera-kind').disabled=false;setCameraMode(false);$('#camera-status').textContent='Camera off. Keyboard or mouse input is used.';return;}
+  if(cameraOn||cameraTracker){cameraTracker?.stop();cameraTracker=null;autoFrame.reset();$('#camera-center').disabled=true;$('#camera-center-reset').disabled=true;cameraCrop=NO_CROP;$('#camera-zoom').disabled=true;$('#camera-zoom-reset').disabled=true;$('#camera-facing').disabled=false;$('#camera-kind').disabled=false;setCameraMode(false);$('#camera-status').textContent='Camera off. Keyboard or mouse input is used.';return;}
   button.disabled=true;$('#camera-status').textContent='Starting camera and loading the pose model…';
   const labels={CAMERA_DENIED:'Camera permission was denied. Allow the camera for this page and try again.',CAMERA_UNSUPPORTED:'This browser cannot open a camera here. Use http://localhost:4173/.',MODEL_FAILED:'The pose model could not start.'};
   const facing=$('#camera-facing').value,kind=$('#camera-kind').value;cameraMirror=facing==='user';cameraKindLabel=kind==='face'?'CAMERA FACE TRACKING':'CAMERA POSE TRACKING';
@@ -186,13 +214,26 @@ $('#camera-toggle').addEventListener('click',async()=>{
   const ok=await tracker.start();
   button.disabled=false;
   if(!ok)return;
-  cameraTracker=tracker;$('#camera-zoom').disabled=kind!=='face';$('#camera-zoom-reset').disabled=false;$('#camera-facing').disabled=true;$('#camera-kind').disabled=true;setCameraMode(true);$('#camera-status').textContent='Camera tracking on. Keep your face in view (body mode: head and shoulders).';
+  cameraTracker=tracker;$('#camera-center').disabled=kind!=='face';$('#camera-center-reset').disabled=false;$('#camera-zoom').disabled=kind!=='face';$('#camera-zoom-reset').disabled=false;$('#camera-facing').disabled=true;$('#camera-kind').disabled=true;setCameraMode(true);$('#camera-status').textContent='Camera tracking on. Keep your face in view (body mode: head and shoulders).';
 });
 const zoomMessages={ZOOM_UNSUPPORTED:'This camera does not support zoom.',NO_FACE:'No face found yet. Sit in view, then try again.',ZOOM_FAILED:'The camera refused the zoom change.'};
+$('#camera-center').addEventListener('click',()=>{
+  if(!cameraTracker)return;
+  const crop=cameraTracker.kind==='face'?centerCrop(cameraTracker.lastFace):null;
+  if(!crop){$('#camera-status').textContent='No face found yet. Sit in view, then try again.';return;}
+  setCameraCrop(crop);autoFrame.adopt(cameraTracker.lastFace);$('#camera-status').textContent='Centered. The grid now covers about five face widths around you, with room above your head; lean a little to change column.';
+});
+$('#camera-center-reset').addEventListener('click',()=>{$('#camera-auto').checked=false;autoFrame.reset();setCameraCrop(null);$('#camera-status').textContent='View reset to the whole camera frame.';});
+// Full screen keeps the whole 3x3 grid on screen (phone browser bars otherwise cut off the bottom row).
+$('#fullscreen').addEventListener('click',async()=>{
+  const frame=document.querySelector('.arena-frame');
+  try{if(document.fullscreenElement)await document.exitFullscreen();else await frame.requestFullscreen();}
+  catch{feed('Full screen unavailable','This browser did not allow full screen');}
+});
 $('#camera-zoom').addEventListener('click',async()=>{
   if(!cameraTracker)return;const result=await cameraTracker.zoomToFace();
   if(result.ok){stabilizer.reset();game.invalidateTracking();frameSource.reset();}
-  $('#camera-status').textContent=result.ok?`Zoom set to ${result.zoom}x so your face fills about a fifth of the frame.`:(zoomMessages[result.reason]??'Zoom failed.');
+  $('#camera-status').textContent=result.ok?`Zoom set to ${result.zoom}x so your face fills about a sixth of the frame width.`:(zoomMessages[result.reason]??'Zoom failed.');
 });
 $('#camera-zoom-reset').addEventListener('click',async()=>{
   if(!cameraTracker)return;const result=await cameraTracker.resetZoom();
@@ -202,8 +243,9 @@ $('#camera-zoom-reset').addEventListener('click',async()=>{
 function loop(){
   const now=performance.now();if(cameraOn)pollCamera();else addSyntheticFrame();const snapshot=game.tick();
   const last=frameSource.lastFrame,anchor=cameraOn?(last?.torso??last?.nose??null):(last?.nose??null);
-  drawArena(ctx,snapshot,anchor,{now,lastEffect,tracking:frameSource.running&&Boolean(anchor),geometry:cameraGeometry,
-    backdrop:cameraOn?drawCameraBackdrop:null,marker:cameraOn});updateScreen(snapshot);
+  const drawn=drawArena(ctx,snapshot,anchor,{now,lastEffect,tracking:frameSource.running&&Boolean(anchor),geometry:cameraGeometry,
+    backdrop:cameraOn?drawCameraBackdrop:null,marker:cameraOn});lastMarker=drawn?.position??null;
+  catchFx.draw(ctx,now,fxSprites,cameraGeometry?.visible??null);updateScreen(snapshot);
   if(now-lastOverlayUpdate>=100){lastOverlayUpdate=now;publishOverlay(snapshot);}
   animationId=requestAnimationFrame(loop);
 }
@@ -218,7 +260,8 @@ function send(text){
   const result=adapter.ingest(syntheticChat({notificationId:`notification-${serial}`,messageId:`message-${serial}`,
     actorId:`viewer-${serial%16}`,text}));
   const feedback=$('#command-feedback');
-  if(result.accepted){feedback.textContent=`Synthetic command sent: cell ${result.cell}`;feed('Viewer attack',`!throw ${result.cell} · 0.5 s warning`);}
+  if(result.accepted&&result.kind==='DROP'){feedback.textContent=`Synthetic command sent: drop in column ${result.cell-3}`;feed('Viewer drop',`!drop ${result.cell-3} · 1.5 s to get under it`);}
+  else if(result.accepted){feedback.textContent=`Synthetic command sent: cell ${result.cell}`;feed('Viewer attack',`!throw ${result.cell} · 0.5 s warning`);}
   else feedback.textContent=reasons[result.reason]??'Event could not be handled';
 }
 

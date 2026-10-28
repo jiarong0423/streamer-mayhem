@@ -31,8 +31,14 @@ export function drawArena(ctx,snapshot,player,{now=0,lastEffect=null,tracking=tr
     ctx.strokeStyle='#d9f965';ctx.lineWidth=2;ctx.beginPath();ctx.arc(0,0,7,0,2*Math.PI);ctx.stroke();ctx.restore();
   }
   if(lastEffect && now-lastEffect.at<1200 && snapshot.mode==='PLAYING'){
-    ctx.save();ctx.beginPath();ctx.rect(rect.x,rect.y,rect.width,rect.height);ctx.clip();ctx.textAlign='center';ctx.font=`900 ${Math.max(12,Math.min(48,rect.height/8))}px sans-serif`;
-    ctx.fillStyle=lastEffect.outcome==='HIT'?'#ff8b70':'#d9f965';ctx.fillText(lastEffect.outcome,rect.x+rect.width/2,rect.y+Math.min(72,rect.height/4));ctx.restore();
+    // Short pop-in then fade; a catch shows the points it earned.
+    const age=Math.max(0,now-lastEffect.at),pop=Math.min(1,age/160),scale=.7+.3*(1-Math.pow(1-pop,3)),alpha=age<800?1:1-(age-800)/400;
+    const label=lastEffect.outcome==='CATCH'&&lastEffect.scoreDelta>0?`CATCH +${lastEffect.scoreDelta}`:lastEffect.outcome;
+    ctx.save();ctx.beginPath();ctx.rect(rect.x,rect.y,rect.width,rect.height);ctx.clip();ctx.textAlign='center';ctx.globalAlpha=Math.max(0,alpha);
+    const size=Math.max(12,Math.min(48,rect.height/8)),cx=rect.x+rect.width/2,cy=rect.y+Math.min(72,rect.height/4);
+    ctx.translate(cx,cy);ctx.scale(scale,scale);ctx.font=`900 ${size}px sans-serif`;
+    ctx.lineWidth=Math.max(3,size/9);ctx.strokeStyle='rgba(8,14,8,.75)';ctx.lineJoin='round';ctx.strokeText(label,0,0);
+    ctx.fillStyle=lastEffect.outcome==='HIT'?'#ff8b70':lastEffect.outcome==='MISS'?'#c9d1c2':'#d9f965';ctx.fillText(label,0,0);ctx.restore();
   }
   return {...overlay,position};
 }

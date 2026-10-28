@@ -43,6 +43,10 @@ Tests use fake clocks, synthetic event IDs and generated landmarks. Some integra
 - Twitch chat is verified against the local protocol simulator and the Twitch CLI mock. The anonymous IRC path was checked against live Twitch (it joined a public channel and received the room ID); its message parsing is covered by unit tests with a fake socket. The OAuth/EventSub path needs the streamer's own Twitch app.
 - OBS behaviour was verified in a synthetic Browser Source profile.
 
+## Third-party assets
+- MediaPipe Tasks Vision and models (Apache-2.0): `dist/vendor/mediapipe/`, see its `NOTICE.md` for sources and checksums.
+- Three sparkle sprites from the Kenney Particle Pack by Kenney (https://kenney.nl/), license CC0 (public domain; credit is optional and given here): `dist/vendor/kenney-particles/`, with the license file and checksums in its `NOTICE.md`. They draw the catch burst effect.
+
 ## Layout
 
 | Path | Purpose |

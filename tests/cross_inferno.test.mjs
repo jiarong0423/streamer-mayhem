@@ -129,10 +129,17 @@ test('CROSS result, admission and snapshot cell arrays cannot change future coll
 test('CROSS both Canvas renderers warn on exactly five cells and leave corners clear',()=>{
   const geometry=createCameraGeometry({canvasWidth:1280,canvasHeight:720,viewport:{x:0,y:0,width:1280,height:720},sourceWidth:1280,sourceHeight:720});
   const snapshot={mode:'PLAYING',attacks:[{cell:5,cells:[...CROSS_CELLS]}]};
-  for(const render of [ctx=>drawCameraOverlay(ctx,geometry,snapshot),ctx=>drawMatrix(ctx,snapshot,{viewWidth:1280,viewHeight:720,sourceWidth:1280,sourceHeight:720})]){
-    const fills=[],ctx={canvas:{width:1280,height:720},fillRect:(...args)=>fills.push(args)};
-    for(const name of ['clearRect','save','restore','beginPath','rect','clip','strokeRect','fillText'])ctx[name]=()=>{};
-    render(ctx);const cells=gridRects(geometry.visible);
-    assert.deepEqual(fills,CROSS_CELLS.map(cell=>{const r=cells[cell-1];return [r.x,r.y,r.width,r.height];}));
+  const cells=gridRects(geometry.visible);
+  const centre=r=>[r.x+r.width/2,r.y+r.height/2];
+  for(const [name,render] of [['overlay',ctx=>drawCameraOverlay(ctx,geometry,snapshot)],['matrix',ctx=>drawMatrix(ctx,snapshot,{viewWidth:1280,viewHeight:720,sourceWidth:1280,sourceHeight:720})]]){
+    const fills=[],rounds=[],ctx={canvas:{width:1280,height:720},fillRect:(...args)=>fills.push(args),roundRect:(...args)=>rounds.push(args)};
+    for(const fn of ['clearRect','save','restore','beginPath','rect','clip','strokeRect','fillText','fill','stroke'])ctx[fn]=()=>{};
+    render(ctx);
+    if(name==='matrix')assert.deepEqual(fills,CROSS_CELLS.map(cell=>{const r=cells[cell-1];return [r.x,r.y,r.width,r.height];}));
+    else{
+      // The camera overlay lights only the targeted cells (rounded, inset); nothing for the four corners.
+      assert.equal(rounds.length,CROSS_CELLS.length);
+      assert.deepEqual(rounds.map(([x,y,w,h])=>[x+w/2,y+h/2]),CROSS_CELLS.map(cell=>centre(cells[cell-1])));
+    }
   }
 });
