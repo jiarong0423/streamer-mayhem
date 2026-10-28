@@ -1,6 +1,6 @@
 # StreamerMayhem
 
-A Twitch interactive game where chat attacks the streamer and the streamer dodges with their body. Viewers type commands; the streamer sees a warning on a transparent OBS overlay and moves out of the danger cells. Built for the Codex x TwitchCon Hackathon.
+A Twitch interactive game where chat attacks the streamer and the streamer dodges (keyboard or mouse in this build; body tracking is synthetic). Viewers type commands; the streamer sees a warning on a transparent OBS overlay and moves out of the danger cells. Built for the Codex x TwitchCon Hackathon.
 
 ## What it does
 

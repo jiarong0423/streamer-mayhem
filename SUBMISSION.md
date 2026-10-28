@@ -7,7 +7,7 @@ StreamerMayhem
 Chat throws the attacks. The streamer dodges with their body.
 
 ## Description
-StreamerMayhem turns a Twitch chat into the attacker and the streamer into the defender. Viewers type `!throw 1`-`!throw 9` to target a cell of a 3x3 grid over the streamer's camera. A warning appears on a transparent OBS overlay, and the streamer has about a second and a half to move out. Four more modes share the same rules core: Cross Inferno (five cells at once, four safe corners), Freeze, Mosquito and Lava.
+StreamerMayhem turns a Twitch chat into the attacker and the streamer into the defender. Viewers type `!throw 1`-`!throw 9` to target a cell of a 3x3 grid over the streamer's camera. A warning appears on a transparent OBS overlay, and the streamer has about half a second to move out (Cross Inferno gives a second and a half). Four more modes share the same rules core: Cross Inferno (five cells at once, four safe corners), Freeze, Mosquito and Lava.
 
 Why it works on stream: viewers see the danger before the streamer reacts, so the audience is in on the joke; the streamer gets a readable warning instead of a surprise. Fairness is built in. Each chat event produces exactly one result, duplicate message IDs are dropped, users are rate-limited, the queue is bounded, and when body tracking is lost an attack resolves as UNKNOWN with no damage and no score instead of a wrong hit.
 
