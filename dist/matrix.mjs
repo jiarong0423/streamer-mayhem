@@ -20,7 +20,7 @@ export function gridCell(point, threshold = 0.55) {
 }
 
 // Twitch pads a repeated message with invisible characters (U+E0000 and friends); strip them, and turn a no-break space into a plain one, before parsing.
-export const cleanCommand = text => text.replace(/[\u200B-\u200F\u2060\uFEFF\u{E0000}-\u{E007F}]/gu, '').replace(/\u00A0/g, ' ').trim();
+export const cleanCommand = text => text.replace(/[\u200B-\u200F\u2060\uFEFF\u{E0000}-\u{E007F}]/gu, '').replace(/\u00A0/g, ' ').trim().replace(/^@\S+\s+/, '');   // a chat reply ("@streamer !drop 2") still counts
 
 export function parseMatrixCommand(text) {
   if (typeof text !== 'string' || text.length > 100) return null;
@@ -60,7 +60,7 @@ export class MatrixGame {
   constructor({ clock = () => performance.now(), onEvent = () => {}, options = {} } = {}) {
     this.clock = clock;
     this.onEvent = onEvent;
-    this.config = { maxAge: 250, confidence: .55, warning: 500, crossWarning: 1500, dropFall: 2500, dropScore: 25, bombPenalty: 25, avoidScore: 10, faceSwatScore: 50, faceDodgeScore: 25, faceBiteDamage: 5, faceBitePenalty: 25, faceMosquitoCooldown: 10000, recovery: 1000,
+    this.config = { maxAge: 250, confidence: .55, warning: 500, crossWarning: 1500, dropFall: 2500, dropScore: 25, bombPenalty: 25, avoidScore: 10, faceSwatScore: 50, faceDodgeScore: 25, faceBiteDamage: 5, faceBitePenalty: 25, faceMosquitoCooldown: 20000, recovery: 1000,
       actorCooldown: 3000, globalCooldown: 400, maxAttacks: 8, ringTime: 1000,
       ringDamage: 10, damage: 15, dodgeScore: 25, freezeDamage:12, freezeScore:100, freezeCooldown:8000,
       mosquitoDamage:5,mosquitoScore:50,lavaDamage:5,lavaScore:75,actionCooldown:8000,

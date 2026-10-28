@@ -38,7 +38,7 @@ export class EventSubAdapter {
       actorId:event?.chatter_user_id,text:event?.message?.text,receivedAt:this.clock()};
     const delivery=this.game.receiveChat(chat);
     const output={kind:'chat',...delivery,viewer:cleanViewerName(event?.chatter_user_name)};
-    this.onDelivery(output);
+    try{this.onDelivery(output);}catch{/* a display callback must not drop the rest of the chat lines */}
     return output;
   }
   disconnect() { this.sessionId=null; this.update('OFFLINE'); }

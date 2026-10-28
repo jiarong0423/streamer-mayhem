@@ -60,8 +60,8 @@ function renderSnapshot(snapshot){
   if(freeze&&action||((freeze||action)&&attacks.length))return error();
   // Score and health are optional display numbers for the stream HUD; if present they must be finite and in range.
   const hud={};
-  if(snapshot.score!==undefined)hud.score=number(snapshot.score,0,1e6);
-  if(snapshot.hp!==undefined)hud.hp=number(snapshot.hp,0,100);
+  if(snapshot.score!==undefined)hud.score=Number.isFinite(snapshot.score)?Math.max(0,Math.min(1e6,snapshot.score)):error();
+  if(snapshot.hp!==undefined)hud.hp=Number.isFinite(snapshot.hp)?Math.max(0,Math.min(100,snapshot.hp)):error();
   // The last viewer who triggered something (display name, already cleaned by the sender); the overlay shows it for a few seconds.
   if(snapshot.viewer!==undefined&&!(typeof snapshot.viewer==='string'&&/^[^\u0000-\u001f\u007f-\u009f]{1,20}$/u.test(snapshot.viewer)))return error();
   return {mode:snapshot.mode,attacks:playing?attacks:[],...hud,...(snapshot.viewer?{viewer:snapshot.viewer}:{}),...(freeze?{freeze}:{}),...(action?{actionGame:action}:{})};

@@ -187,7 +187,7 @@ test('MOSQ-CORE-01 !mosquito is a command, with the same cleaning and cooldowns,
   const r=s.send('!mosquito');assert.equal(r.accepted,true);assert.equal(r.kind,'FACE_MOSQUITO');
   assert.ok(s.events.some(e=>e.type==='faceMosquito'));assert.equal(s.game.snapshot().attacks.length,0);
   s.feed(s.clock.now+500,{x:.5,y:.5,visibility:1});assert.equal(s.send('!mosquito','b').reason,'GAME_COOLDOWN');
-  s.feed(s.clock.now+11000,{x:.5,y:.5,visibility:1});s.game.setFaceMosquitoBusy(true);assert.equal(s.send('!mosquito','c').reason,'MODE_BUSY');
+  s.feed(s.clock.now+21000,{x:.5,y:.5,visibility:1});s.game.setFaceMosquitoBusy(true);assert.equal(s.send('!mosquito','c').reason,'MODE_BUSY');
   s.game.setFaceMosquitoBusy(false);assert.equal(s.send('!mosquito','d').accepted,true);
 });
 test('MOSQ-CORE-02 settling: swat and dodge score, a bite costs health and points (not below zero), unknown costs nothing',()=>{
@@ -204,4 +204,9 @@ test('MOSQ-CORE-03 a bite that empties health ends the round; settling outside p
   const s=setup({faceBiteDamage:100});s.feed(100,{x:.5,y:.5,visibility:1});
   s.game.settleFaceMosquito({outcome:'BITE'});assert.equal(s.game.hp,0);assert.equal(s.game.snapshot().mode,'ROUND_END');
   assert.equal(s.game.settleFaceMosquito({outcome:'SWAT'}),null);
+});
+
+test('CHAT-REPLY a chat reply prefix "@name " does not break a command (RT3 I7)',()=>{
+  const s=setup();s.feed(100,{x:.5,y:.5,visibility:1});
+  const r=s.send('@streamer !drop 2');assert.equal(r.accepted,true);assert.equal(r.kind,'DROP');
 });

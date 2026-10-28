@@ -48,5 +48,7 @@ test('overlay carries score and health only as bounded numbers',()=>{
   const make=extra=>makeOverlayState({session,sequence:1,geometry:g,snapshot:{mode:'PLAYING',attacks:[],...extra},sourcePoint:null});
   const msg=make({score:75,hp:100,hidden:'x'});assert.equal(msg.snapshot.score,75);assert.equal(msg.snapshot.hp,100);assert.equal(JSON.stringify(msg).includes('hidden'),false);
   assert.equal('score' in make({}).snapshot,false);
-  for(const bad of [{score:-1},{score:NaN},{score:1e9},{hp:101},{hp:-5},{hp:Infinity},{score:'7'}])assert.throws(()=>make(bad),/INVALID_OVERLAY_STATE/);
+  for(const bad of [{score:NaN},{hp:Infinity},{score:'7'}])assert.throws(()=>make(bad),/INVALID_OVERLAY_STATE/);
+  // Out-of-range numbers are clamped, not fatal: one odd value must not blank the whole stream overlay (RT3 H2).
+  assert.equal(make({score:-1}).snapshot.score,0);assert.equal(make({score:1e9}).snapshot.score,1e6);assert.equal(make({hp:101}).snapshot.hp,100);assert.equal(make({hp:-5}).snapshot.hp,0);
 });
