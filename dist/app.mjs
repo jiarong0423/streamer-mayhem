@@ -59,7 +59,7 @@ const autoDrops=document.querySelector('#auto-drops');
 $('#face-mosquito').addEventListener('click',()=>{startFaceMosquito();});
 $('#swat').addEventListener('click',()=>{swatFrames=3;});
 autoDrops.addEventListener('change',()=>{waves.reset(performance.now());roundEnding=false;banner=null;mosquitoHint=null;mosquitoPlanned=false;mosquitoCount=0;if(autoDrops.checked)sfx.play('roundStart');if(!autoDrops.checked&&session.phase==='running')session.phase='over';syncStart();feed(autoDrops.checked?'Auto drops on':'Auto drops off',autoDrops.checked?'Random gold items and bombs, rising difficulty':'Only chat starts drops');});
-const catchFx=new CatchBurst();let fxSprites={},lastMarker=null;
+const catchFx=new CatchBurst({count:24});let fxSprites={},lastMarker=null;
 // The mosquito that goes for the face: flight in face_mosquito.mjs; a hand swat or face slap is seen as motion (motion_probe.mjs) where the mosquito is.
 const mosquito=new FaceMosquito({seed:(Date.now()&0x7fffffff)||1});
 const probe=new MotionProbe(),probeCanvas=document.createElement('canvas');probeCanvas.width=64;probeCanvas.height=36;
@@ -159,7 +159,7 @@ const game=new MatrixGame({onEvent:event=>{
     }
     // x,y (window coordinates, 0..1) say where the effect belongs: the floor spot of a drop; the mosquito sets its own in stepMosquito.
     const spot=event.kind==='DROP'?{x:dropTarget(event.cells?.[0]??event.cell-3)??.5,y:DROP_FLOOR}:{};
-    lastEffect={outcome:event.outcome,at:performance.now(),scoreDelta:event.scoreDelta??0,...spot};
+    lastEffect={outcome:event.outcome,at:performance.now(),scoreDelta:event.scoreDelta??0,...(Number.isFinite(event.combo)?{combo:event.combo}:{}),...spot};
     const sound=OUTCOME_SOUND[event.outcome];if(sound)sfx.play(sound,{combo:event.combo});
     if(event.kind==='FACE_MOSQUITO')sfx.mosquitoLoop.stop();
     const titles={HIT:'Ouch, hit!',DODGE:'Nice dodge',CATCH:'Caught it!',MISS:'Missed it',BOMB:'Boom! Bomb caught',AVOID:'Bomb dodged',SWAT:'Swatted it!',BITE:'Bitten!'};
@@ -253,7 +253,9 @@ function addSyntheticFrame(){
 function updateScreen(snapshot){
   const mode=modeNames[snapshot.mode]??snapshot.mode;if($('#game-status').textContent!==mode)$('#game-status').textContent=mode;
   $('#health').textContent=String(snapshot.hp);$('#health-fill').style.width=`${snapshot.hp}%`;
-  $('#score').textContent=String(snapshot.score).padStart(3,'0');
+  const scoreEl=$('#score'),scoreText=String(snapshot.score).padStart(3,'0');
+  if(scoreEl.textContent!==scoreText){scoreEl.textContent=scoreText;scoreEl.classList.remove('bump');void scoreEl.offsetWidth;scoreEl.classList.add('bump');}
+  $('#health-fill').classList.toggle('low',snapshot.hp<=30);
   $('#last-result').textContent=snapshot.lastResult?.outcome??'—';
   $('#pause').textContent=snapshot.mode==='PAUSED'?'▶ Resume game':'Ⅱ Pause game';
   $('#tracking').textContent=tracking?'◎ Simulate tracking loss':'◎ Restore tracking';
@@ -497,7 +499,6 @@ syncSound();syncStart();
 function send(text){
   const command=typeof text==='string'?text.trim():'';
   if(/^!freeze$/i.test(command)){sendChallenge('FREEZE');return;}
-  if(/^!mosquito$/i.test(command)){sendChallenge('MOSQUITO');return;}
   const lava=/^!lava(?:\s+(0\.[1-8]))?$/i.exec(command);
   if(lava){sendChallenge('LAVA',lava[1]?Number(lava[1]):.45);return;}
   const serial=++eventId;
@@ -505,7 +506,8 @@ function send(text){
     actorId:`viewer-${serial%16}`,text}));
   const feedback=$('#command-feedback');
   if(result.accepted&&result.kind==='DROP'){feedback.textContent=`Synthetic command sent: drop in column ${result.cell-3}`;feed('Viewer drop',`!drop ${result.cell-3} · 1.5 s to get under it`);}
-  else if(result.accepted){feedback.textContent=`Synthetic command sent: cell ${result.cell}`;feed('Viewer attack',`!throw ${result.cell} · 0.5 s warning`);}
+  else if(result.accepted&&result.kind==='FACE_MOSQUITO'){feedback.textContent='Synthetic command sent: mosquito';}
+  else if(result.accepted){feedback.textContent=`Synthetic command sent: cell ${result.cell}`;feed('Viewer attack',describeDelivery(result));}
   else feedback.textContent=reasons[result.reason]??'Event could not be handled';
 }
 
@@ -533,7 +535,9 @@ function sendChallenge(kind,level=.45){
   $('#command-feedback').textContent=result.accepted?`${challengeNames[kind]}${result.raised?'Lava level raised':'Started'}`:reasons[result.reason]??'Event could not be handled';
   if(result.accepted)feed(challengeNames[kind],result.raised?'Raise target level':'Uses synthetic joint controls');
 }
-for(const [id,kind] of [['synthetic-freeze','FREEZE'],['synthetic-mosquito','MOSQUITO'],['synthetic-lava','LAVA']])$(`#${id}`).addEventListener('click',()=>sendChallenge(kind));
+for(const [id,kind] of [['synthetic-freeze','FREEZE'],['synthetic-lava','LAVA']])$(`#${id}`).addEventListener('click',()=>sendChallenge(kind));
+// The Mosquito button and a typed !mosquito use the same path as real chat: the mosquito that goes for the face.
+$('#synthetic-mosquito').addEventListener('click',()=>send('!mosquito'));
 $('#elbow-spread').addEventListener('input',()=>{poseControls.spread=Number($('#elbow-spread').value)/100;$('#elbow-value').textContent=`${Math.round(poseControls.spread*100)}%`;});
 $('#hip-stand').addEventListener('click',()=>{poseControls.hip=.5;});
 $('#hip-crouch').addEventListener('click',()=>{poseControls.hip=.93;});

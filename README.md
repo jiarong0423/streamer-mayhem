@@ -7,16 +7,16 @@ A Twitch interactive game for a seated streamer: chat drops gold items and bombs
 ## What it does
 
 - **Catch mode (the main game).** Viewers send `!drop 1`, `!drop 2` or `!drop 3`: a gold item falls for 2.5 s to one of three targets (35%, 50%, 65% of the picture width). A catcher about one face width wide follows the streamer's head along the bottom; if it covers the item when it lands, +25. `!bomb 1-3` drops a bomb: catching it costs 25 points, dodging it earns 10. **Auto drops** (a checkbox) adds irregular waves of items and bombs that get denser and faster over a 75 s round, then shows a score banner. Only the left/right position counts; if the face is not tracked the result is UNKNOWN, never a guess.
+- **Face mosquito (`!mosquito`).** A mosquito flies an irregular S-shaped path toward the streamer's face. Swat it with a hand in flight, or, if it lands, slap your own face within 2 s; tilting away makes it miss (+25). A bite costs 5 HP and 25 points. Hand and slap are detected from camera motion around the mosquito (no hand model), and the first mosquito of a round is a no-penalty practice. Auto drops send one around two thirds into the 75 s round; a viewer `!mosquito` has a 10 s cooldown.
 - **Dodge attacks.** Viewers send `!throw 1` to `!throw 9` to target one cell of a 3x3 grid over the camera view (the grid is only drawn for the targeted cells).
 - **Four more modes** sharing the same rules core, triggered by chat:
   - Dodge (`!throw 1-9`): one cell is hit after a warning.
   - Cross Inferno: cells 2/4/5/6/8 are hit after a 1.5 s warning; corners 1/3/7/9 are safe.
   - Freeze (`!freeze`): keep five joints inside a narrow box through a yellow then red phase; a continuous violation costs HP.
-  - Mosquito (`!mosquito`): move a wrist onto a moving mosquito, or clap, before a 10 s timeout.
   - Lava (`!lava`): rising lava over 8 s; stand or crouch to stay above the surface.
 - **Fair by construction.** One result per event, message-ID dedupe, per-user cooldowns, bounded queue, and tracking loss yields UNKNOWN (no damage, no score) instead of a wrong hit.
 - **OBS overlay.** A transparent Browser Source page receives game state over a local relay and draws the warnings on top of the streamer's camera.
-- **Twitch connection.** OAuth implicit grant plus an EventSub WebSocket `channel.chat.message` subscription, with reconnect, keepalive watchdog and revocation handling. The token stays in page memory and is never written to disk or logs. A second, login-free path reads a public channel's chat anonymously over Twitch's IRC WebSocket (`dist/irc_anonymous.mjs`, read-only, no account or Twitch application); both paths feed the same game rules.
+- **Twitch connection.** OAuth implicit grant plus an EventSub WebSocket `channel.chat.message` subscription, with reconnect, keepalive watchdog and revocation handling. The anonymous IRC path has its own watchdog (join timeout, 6 minute idle limit, endless reconnect). The token stays in page memory and is never written to disk or logs. A second, login-free path reads a public channel's chat anonymously over Twitch's IRC WebSocket (`dist/irc_anonymous.mjs`, read-only, no account or Twitch application); both paths feed the same game rules.
 
 ## Requirements
 
