@@ -20,7 +20,7 @@ Codex was the main developer. In Codex sessions we designed the shared rules cor
 
 ## Codex session ID
 Official wording: the thread where most of the project was built (type `/status` in Codex).
-`01a17dbb-1e9d-7331-8e99-750df636fd8b`
+`01a17b17-befd-76e0-a3e3-be336ebbd556`
 
 ## Repository
 https://github.com/jiarong0423/streamer-mayhem (private; shared with testing@devpost.com)
