@@ -1,5 +1,5 @@
 // Camera pose input. The pose model (MediaPipe Pose Landmarker, Apache-2.0) runs in this browser tab; no video frame is uploaded anywhere.
-export const POSE_ASSETS=Object.freeze({bundle:'./vendor/mediapipe/vision_bundle.mjs',wasm:'./vendor/mediapipe/wasm',model:'./vendor/mediapipe/pose_landmarker_lite.task'});
+export const POSE_ASSETS=Object.freeze({bundle:'./vendor/mediapipe/vision_bundle.mjs',wasm:'./vendor/mediapipe/wasm',model:'./vendor/mediapipe/pose_landmarker_lite.task',faceModel:'./vendor/mediapipe/blaze_face_short_range.tflite'});
 // MediaPipe pose landmark indices ("left" is the person's own left).
 export const LANDMARKS=Object.freeze({nose:0,leftShoulder:11,rightShoulder:12,leftElbow:13,rightElbow:14,leftWrist:15,rightWrist:16,leftHip:23,rightHip:24});
 const finite=Number.isFinite;
@@ -18,6 +18,19 @@ export function landmarksToPoints(landmarks) {
   const a=points.leftShoulder,b=points.rightShoulder;
   points.torso=a&&b?{x:(a.x+b.x)/2,y:(a.y+b.y)/2,visibility:Math.min(a.visibility,b.visibility)}:null;
   return points;
+}
+
+// Face detection result -> game points. The face box centre is the steady judging anchor (`torso` slot); the nose tip is the nose.
+// Face mode has no shoulders, wrists or hips, so Freeze, Mosquito and Lava report POSE_UNKNOWN in this mode.
+export function faceToPoints(detection,width,height) {
+  const box=detection?.boundingBox;
+  if(!box || !(width>0) || !(height>0) || ![box.originX,box.originY,box.width,box.height].every(finite))return null;
+  const score=finite(detection.categories?.[0]?.score)?Math.max(0,Math.min(1,detection.categories[0].score)):0;
+  const center=toPoint({x:(box.originX+box.width/2)/width,y:(box.originY+box.height/2)/height,visibility:score});
+  if(!center)return null;
+  const tip=detection.keypoints?.[2];
+  const nose=toPoint(tip&&{x:tip.x,y:tip.y,visibility:score})??center;
+  return {nose,torso:center,leftShoulder:null,rightShoulder:null};
 }
 
 const cellOf=p=>Math.min(2,Math.floor(p.y*3))*3+Math.min(2,Math.floor(p.x*3))+1;
@@ -46,12 +59,13 @@ export class PointStabilizer {
 }
 
 export class CameraTracker {
-  constructor({video,facingMode='user',mediaDevices=globalThis.navigator?.mediaDevices,loadVision=()=>import(POSE_ASSETS.bundle),assets=POSE_ASSETS,clock=()=>performance.now(),onStatus=()=>{}}={}) {
+  constructor({video,kind='face',facingMode='user',mediaDevices=globalThis.navigator?.mediaDevices,loadVision=()=>import(POSE_ASSETS.bundle),assets=POSE_ASSETS,clock=()=>performance.now(),onStatus=()=>{}}={}) {
     if(!video)throw new TypeError('A video element is required');
     if(!['user','environment'].includes(facingMode))throw new RangeError('INVALID_FACING_MODE');
-    this.facingMode=facingMode;
+    if(!['face','pose'].includes(kind))throw new RangeError('INVALID_KIND');
+    this.kind=kind;this.facingMode=facingMode;
     this.video=video;this.mediaDevices=mediaDevices;this.loadVision=loadVision;this.assets=assets;this.clock=clock;this.onStatus=onStatus;
-    this.status='OFF';this.stream=null;this.landmarker=null;this.lastVideoTime=-1;this.lastStamp=-1;
+    this.lastFaceWidth=null;this.status='OFF';this.stream=null;this.landmarker=null;this.lastVideoTime=-1;this.lastStamp=-1;
   }
   #set(status,detail){this.status=status;this.onStatus(status,detail);}
   async start() {
@@ -63,10 +77,11 @@ export class CameraTracker {
       this.video.srcObject=this.stream;this.video.muted=true;this.video.playsInline=true;await this.video.play();
       const vision=await this.loadVision();
       const fileset=await vision.FilesetResolver.forVisionTasks(this.assets.wasm);
-      const options=delegate=>({baseOptions:{modelAssetPath:this.assets.model,delegate},runningMode:'VIDEO',numPoses:1,
-        minPoseDetectionConfidence:.5,minPosePresenceConfidence:.5,minTrackingConfidence:.5});
-      try{this.landmarker=await vision.PoseLandmarker.createFromOptions(fileset,options('GPU'));}
-      catch{this.landmarker=await vision.PoseLandmarker.createFromOptions(fileset,options('CPU'));}
+      const face=this.kind==='face',Task=face?vision.FaceDetector:vision.PoseLandmarker;
+      const options=delegate=>face?{baseOptions:{modelAssetPath:this.assets.faceModel,delegate},runningMode:'VIDEO',minDetectionConfidence:.5}
+        :{baseOptions:{modelAssetPath:this.assets.model,delegate},runningMode:'VIDEO',numPoses:1,minPoseDetectionConfidence:.5,minPosePresenceConfidence:.5,minTrackingConfidence:.5};
+      try{this.landmarker=await Task.createFromOptions(fileset,options('GPU'));}
+      catch{this.landmarker=await Task.createFromOptions(fileset,options('CPU'));}
       this.#set('ON');return true;
     } catch(error) {
       this.#teardown();
@@ -80,13 +95,35 @@ export class CameraTracker {
     this.lastVideoTime=this.video.currentTime;
     const stamp=Math.max(this.lastStamp+1,Math.floor(this.clock()));this.lastStamp=stamp;
     let result;try{result=this.landmarker.detectForVideo(this.video,stamp);}catch{return {fresh:true,points:null};}
+    if(this.kind==='face') {
+      const detection=result?.detections?.[0],width=detection?.boundingBox?.width/this.video.videoWidth;
+      this.lastFaceWidth=finite(width)&&width>0?width:null;
+      return {fresh:true,points:faceToPoints(detection,this.video.videoWidth,this.video.videoHeight)};
+    }
     return {fresh:true,points:landmarksToPoints(result?.landmarks?.[0])};
+  }
+  // Hardware/ISP zoom (cameras report a range such as 1-10x; it cannot go below 1). Sets the zoom so the face is about `target` of the frame width.
+  async zoomToFace(target=.2) {
+    const track=this.stream?.getVideoTracks?.()[0],range=track?.getCapabilities?.().zoom;
+    if(!range)return {ok:false,reason:'ZOOM_UNSUPPORTED'};
+    if(!(this.lastFaceWidth>0))return {ok:false,reason:'NO_FACE'};
+    const current=track.getSettings?.().zoom??1,step=range.step>0?range.step:.1;
+    const wanted=Math.max(range.min,Math.min(range.max,current*target/this.lastFaceWidth));
+    const zoom=Math.round(wanted/step)*step;
+    try{await track.applyConstraints({advanced:[{zoom}]});}catch{return {ok:false,reason:'ZOOM_FAILED'};}
+    return {ok:true,zoom:Math.round(zoom*100)/100};
+  }
+  async resetZoom() {
+    const track=this.stream?.getVideoTracks?.()[0],range=track?.getCapabilities?.().zoom;
+    if(!range)return {ok:false,reason:'ZOOM_UNSUPPORTED'};
+    try{await track.applyConstraints({advanced:[{zoom:range.min}]});}catch{return {ok:false,reason:'ZOOM_FAILED'};}
+    return {ok:true,zoom:range.min};
   }
   #teardown() {
     try{this.landmarker?.close();}catch{/* already closed */}
     this.landmarker=null;
     for(const track of this.stream?.getTracks?.()??[])track.stop();
-    this.stream=null;this.video.srcObject=null;this.lastVideoTime=-1;this.lastStamp=-1;
+    this.stream=null;this.lastFaceWidth=null;this.video.srcObject=null;this.lastVideoTime=-1;this.lastStamp=-1;
   }
   stop(){this.#teardown();this.#set('OFF');}
 }

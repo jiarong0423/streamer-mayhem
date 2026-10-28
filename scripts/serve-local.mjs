@@ -12,7 +12,7 @@ const routes=new Map([
   ['/oauth-callback.html',['oauth-callback.html','text/html; charset=utf-8']],
   ...['app.mjs','frame_source.mjs','overlay.mjs','overlay_protocol.mjs','matrix.mjs','pose_freeze.mjs','action_games.mjs','matrix_view.mjs','camera_geometry.mjs','arena_draw.mjs','eventsub_adapter.mjs','mock_eventsub_transport.mjs','mock_oauth.mjs','oauth-callback.mjs','twitch_chat_contract.mjs','twitch_provider.mjs','twitch_endpoints.mjs','provider_activation.mjs','auth_popup_controller.mjs','irc_anonymous.mjs','camera_tracker.mjs'].map(name=>[`/${name}`,[name,'text/javascript; charset=utf-8']]),
 ]);
-for(const [file,type] of [['vision_bundle.mjs','text/javascript; charset=utf-8'],['wasm/vision_wasm_internal.js','text/javascript; charset=utf-8'],['wasm/vision_wasm_internal.wasm','application/wasm'],['pose_landmarker_lite.task','application/octet-stream']])routes.set(`/vendor/mediapipe/${file}`,[`vendor/mediapipe/${file}`,type]);
+for(const [file,type] of [['vision_bundle.mjs','text/javascript; charset=utf-8'],['wasm/vision_wasm_internal.js','text/javascript; charset=utf-8'],['wasm/vision_wasm_internal.wasm','application/wasm'],['pose_landmarker_lite.task','application/octet-stream'],['blaze_face_short_range.tflite','application/octet-stream']])routes.set(`/vendor/mediapipe/${file}`,[`vendor/mediapipe/${file}`,type]);
 const smoke=process.argv.includes('--smoke');
 const extra=process.argv.slice(2).filter(arg=>arg!=='--smoke');
 if(extra.length){process.stderr.write('Usage: node scripts/serve-local.mjs [--smoke]\n');process.exit(2);}

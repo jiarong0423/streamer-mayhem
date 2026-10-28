@@ -56,27 +56,27 @@ const media=()=>{const tracks=[{stopped:false,stop(){this.stopped=true;}}];retur
 test('start opens the camera, loads the bundled model locally and reports ON',async()=>{
   const video=fakeVideo(),{vision}=fakeVision(),{mediaDevices}=media(),statuses=[];
   let fileset;vision.FilesetResolver.forVisionTasks=async p=>{fileset=p;return {path:p};};
-  const tracker=new CameraTracker({video,mediaDevices,loadVision:async()=>vision,onStatus:s=>statuses.push(s)});
+  const tracker=new CameraTracker({kind:'pose',video,mediaDevices,loadVision:async()=>vision,onStatus:s=>statuses.push(s)});
   assert.equal(await tracker.start(),true);assert.deepEqual(statuses,['STARTING','ON']);assert.equal(fileset,POSE_ASSETS.wasm);
   assert.ok(video.srcObject&&video.played===1);assert.match(POSE_ASSETS.model,/^\.\/vendor\//);
 });
 test('GPU failure falls back to CPU; total failure reports MODEL_FAILED and releases the camera',async()=>{
   let f=fakeVision({gpuFails:true}),m=media();
-  let tracker=new CameraTracker({video:fakeVideo(),mediaDevices:m.mediaDevices,loadVision:async()=>f.vision});
+  let tracker=new CameraTracker({kind:'pose',video:fakeVideo(),mediaDevices:m.mediaDevices,loadVision:async()=>f.vision});
   assert.equal(await tracker.start(),true);assert.deepEqual(f.created,['GPU','CPU']);
   f=fakeVision({fail:true});m=media();const video=fakeVideo(),statuses=[];
-  tracker=new CameraTracker({video,mediaDevices:m.mediaDevices,loadVision:async()=>f.vision,onStatus:(s,d)=>statuses.push(d?`${s}:${d}`:s)});
+  tracker=new CameraTracker({kind:'pose',video,mediaDevices:m.mediaDevices,loadVision:async()=>f.vision,onStatus:(s,d)=>statuses.push(d?`${s}:${d}`:s)});
   assert.equal(await tracker.start(),false);assert.equal(statuses.at(-1),'FAILED:MODEL_FAILED');assert.equal(m.tracks[0].stopped,true);assert.equal(video.srcObject,null);
 });
 test('camera denial and unsupported browsers are reported without throwing',async()=>{
-  const denied=new CameraTracker({video:fakeVideo(),mediaDevices:{getUserMedia:async()=>{throw Object.assign(new Error('x'),{name:'NotAllowedError'});}},loadVision:async()=>fakeVision().vision});
+  const denied=new CameraTracker({kind:'pose',video:fakeVideo(),mediaDevices:{getUserMedia:async()=>{throw Object.assign(new Error('x'),{name:'NotAllowedError'});}},loadVision:async()=>fakeVision().vision});
   let last;denied.onStatus=(s,d)=>{last=`${s}:${d}`;};assert.equal(await denied.start(),false);assert.equal(last,'FAILED:CAMERA_DENIED');
-  const none=new CameraTracker({video:fakeVideo(),mediaDevices:undefined});none.onStatus=(s,d)=>{last=`${s}:${d}`;};
+  const none=new CameraTracker({kind:'pose',video:fakeVideo(),mediaDevices:undefined});none.onStatus=(s,d)=>{last=`${s}:${d}`;};
   assert.equal(await none.start(),false);assert.equal(last,'FAILED:CAMERA_UNSUPPORTED');
 });
 test('poll returns points only for new video frames with strictly increasing timestamps',async()=>{
   const video=fakeVideo(),{vision}=fakeVision(),{mediaDevices}=media();
-  const tracker=new CameraTracker({video,mediaDevices,loadVision:async()=>vision,clock:()=>1000});
+  const tracker=new CameraTracker({kind:'pose',video,mediaDevices,loadVision:async()=>vision,clock:()=>1000});
   assert.deepEqual(tracker.poll(),{fresh:false,points:null});
   await tracker.start();video.currentTime=.1;
   const first=tracker.poll();assert.equal(first.fresh,true);assert.ok(first.points.torso);
@@ -87,7 +87,7 @@ test('poll returns points only for new video frames with strictly increasing tim
 });
 test('no person in frame gives fresh:true with null points; stop releases everything',async()=>{
   const video=fakeVideo(),{vision}=fakeVision({landmarks:[]}),m=media();
-  const tracker=new CameraTracker({video,mediaDevices:m.mediaDevices,loadVision:async()=>vision});
+  const tracker=new CameraTracker({kind:'pose',video,mediaDevices:m.mediaDevices,loadVision:async()=>vision});
   await tracker.start();video.currentTime=.1;assert.deepEqual(tracker.poll(),{fresh:true,points:null});
   const lmk=tracker.landmarker;tracker.stop();
   assert.equal(lmk.closed,true);assert.equal(m.tracks[0].stopped,true);assert.equal(video.srcObject,null);assert.equal(tracker.status,'OFF');
@@ -95,8 +95,49 @@ test('no person in frame gives fresh:true with null points; stop releases everyt
 
 test('facing mode is passed to the camera request and validated',async()=>{
   let asked;const {vision}=fakeVision();
-  const tracker=new CameraTracker({video:fakeVideo(),facingMode:'environment',loadVision:async()=>vision,
+  const tracker=new CameraTracker({kind:'pose',video:fakeVideo(),facingMode:'environment',loadVision:async()=>vision,
     mediaDevices:{getUserMedia:async c=>{asked=c;return {getTracks:()=>[]};}}});
   await tracker.start();assert.equal(asked.video.facingMode,'environment');assert.equal(asked.audio,false);
-  assert.throws(()=>new CameraTracker({video:fakeVideo(),facingMode:'sideways'}),/INVALID_FACING_MODE/);
+  assert.throws(()=>new CameraTracker({kind:'pose',video:fakeVideo(),facingMode:'sideways'}),/INVALID_FACING_MODE/);
+});
+
+import { faceToPoints } from '../dist/camera_tracker.mjs';
+const face=(over={})=>({boundingBox:{originX:500,originY:200,width:200,height:200},categories:[{score:.93}],keypoints:[{x:.4,y:.4},{x:.5,y:.4},{x:.45,y:.5},{x:.45,y:.6}],...over});
+test('face detection maps to the nose tip and a steadier face-centre anchor',()=>{
+  const p=faceToPoints(face(),1280,720);
+  assert.deepEqual(p.nose,{x:.45,y:.5,visibility:.93});
+  assert.ok(Math.abs(p.torso.x-600/1280)<1e-9&&Math.abs(p.torso.y-300/720)<1e-9);assert.equal(p.leftShoulder,null);
+  assert.deepEqual(faceToPoints(face({keypoints:undefined}),1280,720).nose.x,p.torso.x);          // falls back to the box centre
+  assert.equal(faceToPoints(null,1280,720),null);assert.equal(faceToPoints(face(),0,720),null);
+  assert.equal(faceToPoints(face({boundingBox:{originX:1600,originY:0,width:200,height:200}}),1280,720),null); // centre outside the frame
+});
+test('face mode loads the face detector and polls detections; invalid kind is rejected',async()=>{
+  const created=[];const video=fakeVideo();video.videoWidth=1280;video.videoHeight=720;
+  const vision={FilesetResolver:{forVisionTasks:async()=>({})},FaceDetector:{createFromOptions:async(f,o)=>{created.push(o.baseOptions.modelAssetPath);return {close(){},detectForVideo(){return {detections:[face()]};}};}}};
+  const tracker=new CameraTracker({kind:'pose',video,kind:'face',loadVision:async()=>vision,mediaDevices:media().mediaDevices});
+  assert.equal(await tracker.start(),true);assert.match(created[0],/blaze_face_short_range\.tflite$/);
+  video.currentTime=.1;const r=tracker.poll();assert.equal(r.fresh,true);assert.ok(r.points.torso&&r.points.nose);
+  assert.throws(()=>new CameraTracker({kind:'pose',video:fakeVideo(),kind:'hands'}),/INVALID_KIND/);
+});
+
+function zoomRig({range={min:1,max:10,step:.1},settings={zoom:1}}={}) {
+  const applied=[],track={stop(){},getCapabilities:()=>range?{zoom:range}:{},getSettings:()=>settings,applyConstraints:async c=>{applied.push(c);}};
+  const video=fakeVideo();video.videoWidth=1280;video.videoHeight=720;
+  const vision={FilesetResolver:{forVisionTasks:async()=>({})},FaceDetector:{createFromOptions:async()=>({close(){},detectForVideo(){return {detections:[{boundingBox:{originX:500,originY:200,width:128,height:160},categories:[{score:.9}],keypoints:[]}]};}})}};
+  return {applied,video,tracker:new CameraTracker({video,kind:'face',loadVision:async()=>vision,mediaDevices:{getUserMedia:async()=>({getTracks:()=>[track],getVideoTracks:()=>[track]})}})};
+}
+test('zoomToFace sizes the zoom from the measured face width and respects the camera range',async()=>{
+  const r=zoomRig();await r.tracker.start();
+  assert.deepEqual(await r.tracker.zoomToFace(),{ok:false,reason:'NO_FACE'});
+  r.video.currentTime=.1;r.tracker.poll();                                   // face is 128/1280 = 10% of the frame
+  const out=await r.tracker.zoomToFace(.2);assert.deepEqual(out,{ok:true,zoom:2});assert.deepEqual(r.applied[0],{advanced:[{zoom:2}]});
+  assert.deepEqual(await r.tracker.resetZoom(),{ok:true,zoom:1});
+});
+test('zoom is clamped to the range, and unsupported or failing cameras are reported',async()=>{
+  const small=zoomRig({range:{min:1,max:1.5,step:.1}});await small.tracker.start();small.video.currentTime=.1;small.tracker.poll();
+  assert.equal((await small.tracker.zoomToFace(.2)).zoom,1.5);
+  const none=zoomRig({range:null});await none.tracker.start();assert.deepEqual(await none.tracker.zoomToFace(),{ok:false,reason:'ZOOM_UNSUPPORTED'});assert.deepEqual(await none.tracker.resetZoom(),{ok:false,reason:'ZOOM_UNSUPPORTED'});
+  const bad=zoomRig();await bad.tracker.start();bad.video.currentTime=.1;bad.tracker.poll();
+  bad.tracker.stream.getVideoTracks()[0].applyConstraints=async()=>{throw new Error('x');};
+  assert.deepEqual(await bad.tracker.zoomToFace(),{ok:false,reason:'ZOOM_FAILED'});
 });

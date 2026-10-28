@@ -44,8 +44,10 @@
             <ol class="card-description" id="go-live-steps"><li>Turn on camera tracking and stand so your head and shoulders are in view.</li><li>Type your channel name below and press Connect.</li><li>Add the OBS overlay link (below) as a Browser Source.</li><li>Ask chat to type <code>!throw 1</code> to <code>!throw 9</code>, then dodge.</li></ol>
             <details class="provider-settings" open><summary>Camera body tracking</summary>
               <p>Tracks your body with your camera, inside this browser tab. No video is uploaded. Keep the camera still and stand alone in view.</p>
+              <label>Tracking <select id="camera-kind"><option value="face">Face (works close up)</option><option value="pose">Body (needs shoulders in view)</option></select></label>
               <label>Camera <select id="camera-facing"><option value="user">Front camera (mirrored)</option><option value="environment">Rear camera</option></select></label>
               <div class="provider-actions"><button id="camera-toggle" type="button">Turn on camera tracking</button></div>
+              <div class="provider-actions"><button id="camera-zoom" type="button" disabled>Auto zoom to my face</button><button id="camera-zoom-reset" type="button" disabled>Reset zoom</button></div>
               <p id="camera-status" role="status">Camera off. Keyboard or mouse input is used.</p>
               <video id="camera-video" playsinline muted style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"></video>
             </details>
@@ -121,7 +123,7 @@
             </details>
           </div>
           <div class="activity-card"><div class="activity-head"><span>LIVE ACTIVITY</span><i></i></div><ol id="activity" aria-live="polite"><li><span class="feed-dot"></span><div><b>Simulated chat ready</b><small>Waiting for the first command</small></div><time>NOW</time></li></ol></div>
-          <div class="no-network"><span>✦</span><p><b>Safe to practice.</b> Until you connect to Twitch above, this page uses local synthetic data only: no camera and no real chat.</p></div>
+          <div class="no-network"><span>✦</span><p><b>Safe to practice.</b> Until you turn on the camera or connect to Twitch above, this page uses local synthetic data only: no camera and no real chat.</p></div>
         </aside>
       </section>
 
