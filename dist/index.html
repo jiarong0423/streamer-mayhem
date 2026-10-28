@@ -7,6 +7,7 @@
   <meta name="description" content="Streamer Mayhem: Twitch chat attacks, the streamer dodges.">
   <title>Streamer Mayhem — Chat vs. Streamer</title>
   <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./ux.css">
 </head>
 <body>
   <div class="site-shell">
@@ -39,6 +40,17 @@
         <aside class="control-column" aria-label="Streamer controls">
           <div class="section-head side-head"><div><span class="section-index">02 / THE CHAT</span><h2>Streamer controls</h2></div><span class="side-number">✳</span></div>
           <div class="control-card">
+            <div class="ux-start" aria-label="Quick start">
+              <button id="start-playing" class="ux-start-button" type="button" data-phase="idle">Start playing</button>
+              <p id="start-status" class="ux-start-status" role="status"></p>
+              <div class="ux-sound">
+                <button id="sound-toggle" class="ux-sound-button" type="button" aria-pressed="false" data-state="MUTED">🔇 Sound off (click to turn on)</button>
+                <label class="ux-volume">Volume <input id="sound-volume" type="range" min="0" max="100" step="1" value="100" aria-label="Sound volume"></label>
+              </div>
+              <p class="ux-start-hint">Turns on your camera, counts down 3-2-1, then the gold and bombs start to fall. Lean left and right to catch the gold. Esc stops.</p>
+              <video id="camera-video" playsinline muted style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"></video>
+            </div>
+            <details class="provider-settings ux-more" id="all-controls"><summary>More options</summary>
             <div class="chat-card-head"><div><span class="chat-icon">#</span><div><b>Your chat</b><small>Connect, then dodge</small></div></div><span id="connection-badge" class="online-badge">Simulated connection</span></div>
             <div class="card-rule"></div>
             <ol class="card-description" id="go-live-steps"><li>Turn on camera tracking and stand so your head and shoulders are in view.</li><li>Type your channel name below and press Connect.</li><li>Add the OBS overlay link (below) as a Browser Source.</li><li>Ask chat to type <code>!throw 1</code> to <code>!throw 9</code>, then dodge.</li></ol>
@@ -55,7 +67,6 @@
               <p id="camera-debug" class="camera-debug" hidden></p>
               <label class="check-row"><input id="swat-test" type="checkbox"> Swat sensor test: slap or clap in front of your face and watch the bar</label>
               <div id="swat-meter" class="swat-meter" hidden><div class="swat-bar"><i id="swat-fill"></i><b class="swat-mark" title="needs this much for a swat"></b></div><span id="swat-text">0.00</span></div>
-              <video id="camera-video" playsinline muted style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"></video>
             </details>
 
             <details class="provider-settings" open><summary>Connect to Twitch chat without login</summary>
@@ -127,6 +138,7 @@
               <p class="command-feedback">The official CLI mock uses a substitute subscription; chat events must come from the synthetic injector.</p>
               <div class="mini-actions"><button id="mock-toggle" type="button">Connect local CLI mock</button></div>
               <div class="mini-actions"><button id="auth-mock-toggle" type="button">Start local chat auth test</button></div>
+            </details>
             </details>
             </details>
           </div>

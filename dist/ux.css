@@ -1,0 +1,20 @@
+/* One-click start and sound controls. Uses the page's own colour variables so it follows the rest of the theme. */
+.ux-start{display:flex;flex-direction:column;gap:10px;margin-bottom:16px}
+.ux-start-button{width:100%;min-height:64px;padding:14px 18px;border:0;border-radius:12px;background:var(--accent);color:var(--on-accent);font:800 22px/1.1 system-ui,sans-serif;letter-spacing:.2px;cursor:pointer;transition:transform .12s,filter .12s,box-shadow .12s;box-shadow:0 6px 18px rgba(0,0,0,.28)}
+.ux-start-button:hover{filter:brightness(1.08)}
+.ux-start-button:active{transform:translateY(1px) scale(.995)}
+.ux-start-button:focus-visible,.ux-sound-button:focus-visible{outline:3px solid var(--ink);outline-offset:3px}
+.ux-start-button[data-phase="starting"],.ux-start-button[data-phase="countdown"]{font-size:17px;filter:saturate(.8)}
+.ux-start-button[data-phase="running"]{background:transparent;color:var(--ink);border:2px solid var(--accent);box-shadow:none}
+.ux-start-button[data-phase="over"]{animation:ux-pulse 1.6s ease-in-out infinite}
+@keyframes ux-pulse{50%{box-shadow:0 0 0 7px rgba(255,255,255,.12)}}
+@media (prefers-reduced-motion:reduce){.ux-start-button{transition:none}.ux-start-button[data-phase="over"]{animation:none}}
+.ux-start-status{min-height:16px;margin:0;font-size:12px;line-height:1.5;color:var(--ink)}
+.ux-start-hint{margin:0;font-size:11px;line-height:1.6;color:var(--muted)}
+.ux-sound{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.ux-sound-button{flex:1 1 190px;min-height:40px;padding:8px 12px;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--ink);font:700 13px/1.2 system-ui,sans-serif;text-align:left;cursor:pointer}
+.ux-sound-button[data-state="AUDIO READY"]{border-color:var(--accent)}
+.ux-sound-button:disabled{opacity:.55;cursor:not-allowed}
+.ux-volume{display:flex;align-items:center;gap:8px;flex:1 1 130px;font-size:11px;color:var(--muted)}
+.ux-volume input{flex:1;min-width:70px;accent-color:var(--accent)}
+.ux-more>summary{font-weight:700}
