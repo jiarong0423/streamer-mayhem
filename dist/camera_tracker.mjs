@@ -46,8 +46,10 @@ export class PointStabilizer {
 }
 
 export class CameraTracker {
-  constructor({video,mediaDevices=globalThis.navigator?.mediaDevices,loadVision=()=>import(POSE_ASSETS.bundle),assets=POSE_ASSETS,clock=()=>performance.now(),onStatus=()=>{}}={}) {
+  constructor({video,facingMode='user',mediaDevices=globalThis.navigator?.mediaDevices,loadVision=()=>import(POSE_ASSETS.bundle),assets=POSE_ASSETS,clock=()=>performance.now(),onStatus=()=>{}}={}) {
     if(!video)throw new TypeError('A video element is required');
+    if(!['user','environment'].includes(facingMode))throw new RangeError('INVALID_FACING_MODE');
+    this.facingMode=facingMode;
     this.video=video;this.mediaDevices=mediaDevices;this.loadVision=loadVision;this.assets=assets;this.clock=clock;this.onStatus=onStatus;
     this.status='OFF';this.stream=null;this.landmarker=null;this.lastVideoTime=-1;this.lastStamp=-1;
   }
@@ -57,7 +59,7 @@ export class CameraTracker {
     this.#set('STARTING');
     try {
       if(typeof this.mediaDevices?.getUserMedia!=='function')throw new Error('CAMERA_UNSUPPORTED');
-      this.stream=await this.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:1280},height:{ideal:720}},audio:false});
+      this.stream=await this.mediaDevices.getUserMedia({video:{facingMode:this.facingMode,width:{ideal:1280},height:{ideal:720}},audio:false});
       this.video.srcObject=this.stream;this.video.muted=true;this.video.playsInline=true;await this.video.play();
       const vision=await this.loadVision();
       const fileset=await vision.FilesetResolver.forVisionTasks(this.assets.wasm);

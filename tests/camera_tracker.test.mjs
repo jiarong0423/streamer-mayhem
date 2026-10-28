@@ -92,3 +92,11 @@ test('no person in frame gives fresh:true with null points; stop releases everyt
   const lmk=tracker.landmarker;tracker.stop();
   assert.equal(lmk.closed,true);assert.equal(m.tracks[0].stopped,true);assert.equal(video.srcObject,null);assert.equal(tracker.status,'OFF');
 });
+
+test('facing mode is passed to the camera request and validated',async()=>{
+  let asked;const {vision}=fakeVision();
+  const tracker=new CameraTracker({video:fakeVideo(),facingMode:'environment',loadVision:async()=>vision,
+    mediaDevices:{getUserMedia:async c=>{asked=c;return {getTracks:()=>[]};}}});
+  await tracker.start();assert.equal(asked.video.facingMode,'environment');assert.equal(asked.audio,false);
+  assert.throws(()=>new CameraTracker({video:fakeVideo(),facingMode:'sideways'}),/INVALID_FACING_MODE/);
+});

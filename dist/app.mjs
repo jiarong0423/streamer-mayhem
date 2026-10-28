@@ -18,7 +18,7 @@ const player={x:.5,y:.5};
 const poseControls={spread:.1,hip:.5,leftWrist:{x:.25,y:.55},rightWrist:{x:.75,y:.55}};
 const challengeNames={CROSS:'Cross Inferno',FREEZE:'Freeze',MOSQUITO:'Mosquito',LAVA:'Lava'};
 let cameraGeometry=createCameraGeometry({canvasWidth:canvas.width,canvasHeight:canvas.height,viewport:{x:0,y:0,width:canvas.width,height:canvas.height},sourceWidth:1280,sourceHeight:720});
-let eventId=0,tracking=true,lastEffect=null,animationId=0,mockMode=false,chatMode=false,providerActivation=null,configuredProvider=null,ircChat=null,cameraTracker=null,cameraOn=false,savedGeometry=null;
+let eventId=0,tracking=true,lastEffect=null,animationId=0,mockMode=false,chatMode=false,providerActivation=null,configuredProvider=null,ircChat=null,cameraTracker=null,cameraOn=false,cameraMirror=true,savedGeometry=null;
 let overlaySession=null,overlaySequence=0,lastOverlayUpdate=0,overlayInFlight=0,overlayEnabled=false;
 const modeNames={IDLE:'Ready',PLAYING:'Playing',PAUSED:'Paused',TRACKING_LOST:'Tracking lost',RECOVERING:'Getting ready',ROUND_END:'Round over'};
 const reasons={MODE_BUSY:'Finish the current challenge first',POSE_UNKNOWN:'Not enough joints visible or lava at its cap; restore the joint',FREEZE_COOLDOWN:'Freeze is cooling down',GAME_COOLDOWN:'This game is cooling down',INVALID_LEVEL:'Lava level must be between 0.1 and 0.8',INVALID_COMMAND:'Enter !throw 1-9, !freeze, !mosquito or !lava',ACTOR_COOLDOWN:'This viewer must wait',GLOBAL_COOLDOWN:'Wait a moment before throwing',QUEUE_FULL:'Attack queue full',OFFLINE:'Simulated chat is offline',NOT_PLAYING:'The game cannot accept attacks now',DUPLICATE:'Duplicate event skipped',INVALID_EVENT:'Malformed simulated event'};
@@ -137,7 +137,15 @@ function updateScreen(snapshot){
 }
 
 // Camera tracking: the page shows the mirrored camera image under the grid; poses come from the in-browser model.
+function syncCameraGeometry(){
+  // The stream's size changes when the phone rotates; rebuild the grid so it always matches the visible image.
+  const video=$('#camera-video'),w=video.videoWidth,h=video.videoHeight;
+  if(!w||!h||!cameraGeometry||(cameraGeometry.sourceWidth===w&&cameraGeometry.sourceHeight===h))return;
+  cameraGeometry=createCameraGeometry({canvasWidth:canvas.width,canvasHeight:canvas.height,viewport:{x:0,y:0,width:canvas.width,height:canvas.height},sourceWidth:w,sourceHeight:h,mirror:cameraMirror,fit:'contain'});
+  stabilizer.reset();game.invalidateTracking();frameSource.reset();
+}
 function pollCamera(){
+  syncCameraGeometry();
   const result=cameraTracker.poll();
   if(!result.fresh)return;
   if(result.points)frameSource.capture(result.points);else stabilizer.reset();
@@ -146,7 +154,8 @@ function drawCameraBackdrop(context,geometry){
   const video=$('#camera-video');if(video.readyState<2)return;
   const v=geometry.visible,i=geometry.image;
   context.save();context.beginPath();context.rect(v.x,v.y,v.width,v.height);context.clip();
-  context.translate(i.x+i.width,i.y);context.scale(-1,1);context.drawImage(video,0,0,i.width,i.height);context.restore();
+  if(geometry.mirror){context.translate(i.x+i.width,i.y);context.scale(-1,1);}else context.translate(i.x,i.y);
+  context.drawImage(video,0,0,i.width,i.height);context.restore();
 }
 function setPoseLabels(text,badge){
   for(const element of document.querySelectorAll('[data-pose-label]'))element.textContent=text;
@@ -157,7 +166,7 @@ function setCameraMode(on){
   if(on){
     const video=$('#camera-video');savedGeometry=cameraGeometry;
     cameraGeometry=createCameraGeometry({canvasWidth:canvas.width,canvasHeight:canvas.height,viewport:{x:0,y:0,width:canvas.width,height:canvas.height},
-      sourceWidth:video.videoWidth||1280,sourceHeight:video.videoHeight||720,mirror:true,fit:'contain'});
+      sourceWidth:video.videoWidth||1280,sourceHeight:video.videoHeight||720,mirror:cameraMirror,fit:'contain'});
     setPoseLabels('CAMERA POSE TRACKING','Camera tracking');
     $('#camera-toggle').textContent='Turn off camera tracking';
   } else {
@@ -169,14 +178,15 @@ function setCameraMode(on){
 }
 $('#camera-toggle').addEventListener('click',async()=>{
   const button=$('#camera-toggle');
-  if(cameraOn||cameraTracker){cameraTracker?.stop();cameraTracker=null;setCameraMode(false);$('#camera-status').textContent='Camera off. Keyboard or mouse input is used.';return;}
+  if(cameraOn||cameraTracker){cameraTracker?.stop();cameraTracker=null;$('#camera-facing').disabled=false;setCameraMode(false);$('#camera-status').textContent='Camera off. Keyboard or mouse input is used.';return;}
   button.disabled=true;$('#camera-status').textContent='Starting camera and loading the pose model…';
   const labels={CAMERA_DENIED:'Camera permission was denied. Allow the camera for this page and try again.',CAMERA_UNSUPPORTED:'This browser cannot open a camera here. Use http://localhost:4173/.',MODEL_FAILED:'The pose model could not start.'};
-  const tracker=new CameraTracker({video:$('#camera-video'),onStatus:(status,detail)=>{if(status==='FAILED')$('#camera-status').textContent=labels[detail]??'Camera tracking failed.';}});
+  const facing=$('#camera-facing').value;cameraMirror=facing==='user';
+  const tracker=new CameraTracker({video:$('#camera-video'),facingMode:facing,onStatus:(status,detail)=>{if(status==='FAILED')$('#camera-status').textContent=labels[detail]??'Camera tracking failed.';}});
   const ok=await tracker.start();
   button.disabled=false;
   if(!ok)return;
-  cameraTracker=tracker;setCameraMode(true);$('#camera-status').textContent='Camera tracking on. Stand back so your head and shoulders are in view.';
+  cameraTracker=tracker;$('#camera-facing').disabled=true;setCameraMode(true);$('#camera-status').textContent='Camera tracking on. Stand back so your head and shoulders are in view.';
 });
 function loop(){
   const now=performance.now();if(cameraOn)pollCamera();else addSyntheticFrame();const snapshot=game.tick();

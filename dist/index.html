@@ -44,6 +44,7 @@
             <ol class="card-description" id="go-live-steps"><li>Turn on camera tracking and stand so your head and shoulders are in view.</li><li>Type your channel name below and press Connect.</li><li>Add the OBS overlay link (below) as a Browser Source.</li><li>Ask chat to type <code>!throw 1</code> to <code>!throw 9</code>, then dodge.</li></ol>
             <details class="provider-settings" open><summary>Camera body tracking</summary>
               <p>Tracks your body with your camera, inside this browser tab. No video is uploaded. Keep the camera still and stand alone in view.</p>
+              <label>Camera <select id="camera-facing"><option value="user">Front camera (mirrored)</option><option value="environment">Rear camera</option></select></label>
               <div class="provider-actions"><button id="camera-toggle" type="button">Turn on camera tracking</button></div>
               <p id="camera-status" role="status">Camera off. Keyboard or mouse input is used.</p>
               <video id="camera-video" playsinline muted style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"></video>
