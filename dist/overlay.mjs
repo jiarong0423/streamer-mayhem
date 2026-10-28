@@ -15,7 +15,7 @@ function render(data){
   const snapshot={...state.snapshot,mode,attacks:mode==='PLAYING'?state.snapshot.attacks:[]};
   drawCameraOverlay(ctx,state.geometry,snapshot);
   const rect=state.geometry.visible;ctx.save();ctx.beginPath();ctx.rect(rect.x,rect.y,rect.width,rect.height);ctx.clip();
-  const fontSize=Math.max(8,Math.min(20,rect.width/24,rect.height/15));ctx.fillStyle='#fff';ctx.font=`bold ${fontSize}px sans-serif`;ctx.textAlign='right';ctx.fillText('SYNTHETIC POSE',rect.x+rect.width-4,rect.y+fontSize+3);
+  const fontSize=Math.max(8,Math.min(20,rect.width/24,rect.height/15));ctx.fillStyle='#fff';ctx.font=`bold ${fontSize}px sans-serif`;ctx.textAlign='right';
   let cell=null;
   if(snapshot.mode==='PLAYING'){const p=visiblePointToCanvas(projected,state.geometry);cell=projectedCell;if(p){ctx.fillStyle='#00ffff';ctx.beginPath();ctx.arc(p.x,p.y,Math.max(2,Math.min(5,rect.width/70)),0,2*Math.PI);ctx.fill();}}
   ctx.restore();const status=snapshot.mode==='TRACKING_LOST'?'Tracking lost':`Overlay ${snapshot.mode}`;canvas.setAttribute('aria-label',status);canvas.dataset.status=status;canvas.dataset.cell=cell===null?'':String(cell);

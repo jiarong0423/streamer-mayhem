@@ -1,6 +1,6 @@
 # StreamerMayhem
 
-A Twitch interactive game where chat attacks the streamer and the streamer dodges (keyboard or mouse in this build; body tracking is synthetic). Viewers type commands; the streamer sees a warning on a transparent OBS overlay and moves out of the danger cells. Built for the Codex x TwitchCon Hackathon.
+A Twitch interactive game where chat attacks the streamer and the streamer dodges with their body, tracked by a camera pose model that runs in the browser tab (keyboard or mouse is the fallback). Viewers type commands; the streamer sees a warning on a transparent OBS overlay and moves out of the danger cells. Built for the Codex x TwitchCon Hackathon.
 
 ## What it does
 
@@ -39,7 +39,7 @@ Tests use fake clocks, synthetic event IDs and generated landmarks. Some integra
 
 ## Honest scope
 
-- Body tracking in this repository is driven by synthetic five-joint frames and keyboard/mouse input. A real camera pose model is not bundled.
+- Body tracking: press **Turn on camera tracking**; the page runs Google's MediaPipe Pose Landmarker (Apache-2.0, bundled under `dist/vendor/mediapipe/`, see its NOTICE.md) on your camera, locally. Judging uses the shoulder midpoint, with the nose as fallback. Verified so far: the model loads under the page's security policy, landmark mapping, grid-line stabilization and the page wiring are covered by tests and a stubbed camera; accuracy with a real person is checked by the streamer on their own camera. Keep the camera fixed and stand alone in view; Lava needs the hips in view. The model library tries to send a usage-log request to Google; the page's Content-Security-Policy blocks it, so nothing leaves the machine. Without the camera, input is synthetic (keyboard or mouse).
 - Twitch chat is verified against the local protocol simulator and the Twitch CLI mock. The anonymous IRC path was checked against live Twitch (it joined a public channel and received the room ID); its message parsing is covered by unit tests with a fake socket. The OAuth/EventSub path needs the streamer's own Twitch app.
 - OBS behaviour was verified in a synthetic Browser Source profile.
 

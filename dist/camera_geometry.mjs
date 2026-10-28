@@ -40,7 +40,7 @@ export function canvasPointToSource(point,g) {
 export function projectCameraFrame(frame,g) {
   if(!frame || !g)return null;
   const projected={...frame,nose:projectCameraPoint(frame.nose,g),leftShoulder:projectCameraPoint(frame.leftShoulder,g),rightShoulder:projectCameraPoint(frame.rightShoulder,g)};
-  for(const joint of ['leftElbow','rightElbow','leftWrist','rightWrist','leftHip','rightHip'])if(Object.hasOwn(frame,joint))projected[joint]=projectCameraPoint(frame[joint],g);
+  for(const joint of ['torso','leftElbow','rightElbow','leftWrist','rightWrist','leftHip','rightHip'])if(Object.hasOwn(frame,joint))projected[joint]=projectCameraPoint(frame[joint],g);
   return projected;
 }
 export function visiblePointToCanvas(point,g) {

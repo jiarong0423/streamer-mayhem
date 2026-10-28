@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://id.twitch.tv https://api.twitch.tv wss://eventsub.wss.twitch.tv wss://irc-ws.chat.twitch.tv http://127.0.0.1:8080 ws://127.0.0.1:8080 http://127.0.0.1:8091 ws://127.0.0.1:8091; object-src 'none'; base-uri 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://id.twitch.tv https://api.twitch.tv wss://eventsub.wss.twitch.tv wss://irc-ws.chat.twitch.tv http://127.0.0.1:8080 ws://127.0.0.1:8080 http://127.0.0.1:8091 ws://127.0.0.1:8091; object-src 'none'; base-uri 'none'">
   <meta name="description" content="Streamer Mayhem: Twitch chat attacks, the streamer dodges.">
   <title>Streamer Mayhem — Synthetic Arcade</title>
   <link rel="stylesheet" href="./styles.css">
@@ -13,7 +13,7 @@
     <header class="topbar">
       <a class="brand" href="#top" aria-label="Streamer Mayhem home"><span class="brand-mark">M<span>✦</span></span><span>STREAMER<br><b>MAYHEM</b></span></a>
       <nav aria-label="Main"><a class="active" href="#arena-section">Arena</a><a href="#how-to">How to play</a></nav>
-      <div class="top-meta"><span class="status-dot"></span> SYNTHETIC POSE INPUT <span class="meta-slash">/</span> LIVE TWITCH CHAT</div>
+      <div class="top-meta"><span class="status-dot"></span> <span data-pose-label>SYNTHETIC POSE INPUT</span> <span class="meta-slash">/</span> LIVE TWITCH CHAT</div>
     </header>
 
     <main id="top">
@@ -41,7 +41,14 @@
           <div class="control-card">
             <div class="chat-card-head"><div><span class="chat-icon">#</span><div><b>Your chat</b><small>Connect, then dodge</small></div></div><span id="connection-badge" class="online-badge">Simulated connection</span></div>
             <div class="card-rule"></div>
-            <ol class="card-description" id="go-live-steps"><li>Type your channel name below and press Connect.</li><li>Add the OBS overlay link (below) as a Browser Source.</li><li>Ask chat to type <code>!throw 1</code> to <code>!throw 9</code>, then dodge.</li></ol>
+            <ol class="card-description" id="go-live-steps"><li>Turn on camera tracking and stand so your head and shoulders are in view.</li><li>Type your channel name below and press Connect.</li><li>Add the OBS overlay link (below) as a Browser Source.</li><li>Ask chat to type <code>!throw 1</code> to <code>!throw 9</code>, then dodge.</li></ol>
+            <details class="provider-settings" open><summary>Camera body tracking</summary>
+              <p>Tracks your body with your camera, inside this browser tab. No video is uploaded. Keep the camera still and stand alone in view.</p>
+              <div class="provider-actions"><button id="camera-toggle" type="button">Turn on camera tracking</button></div>
+              <p id="camera-status" role="status">Camera off. Keyboard or mouse input is used.</p>
+              <video id="camera-video" playsinline muted style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"></video>
+            </details>
+
             <details class="provider-settings" open><summary>Connect to Twitch chat without login</summary>
               <p>Reads a public channel's chat anonymously (read-only). No account, token or Twitch application is needed. Chat commands such as <code>!throw 5</code> trigger attacks.</p>
               <label>Channel name <input id="irc-channel" maxlength="26" autocomplete="off" placeholder="your_channel"></label>
@@ -119,7 +126,7 @@
 
       <section class="how-to" id="how-to"><div class="how-title"><span class="section-index">03 / THE RULES</span><h2>Ready to play?</h2><p>Give chat a button.<br>Give the streamer half a second.</p></div><div class="how-step"><span>01</span><b>Chat attacks</b><p>Type <code>!throw 1</code> to <code>!throw 9</code> to pick the target cell.</p></div><div class="how-step"><span>02</span><b>Dodge the red warning</b><p>Click the arena or use the arrow keys to move to another cell.</p></div><div class="how-step"><span>03</span><b>Survive the round</b><p>Dodges score, hits cost HP. Press Restart to play again.</p></div></section>
     </main>
-    <footer><span>STREAMER MAYHEM <b>✦</b> MATRIX DODGE</span><span>SYNTHETIC POSE INPUT · LIVE TWITCH CHAT</span><a href="#top">BACK TO TOP ↑</a></footer>
+    <footer><span>STREAMER MAYHEM <b>✦</b> MATRIX DODGE</span><span><span data-pose-label>SYNTHETIC POSE INPUT</span> · LIVE TWITCH CHAT</span><a href="#top">BACK TO TOP ↑</a></footer>
   </div>
   <script type="module" src="./app.mjs"></script>
 </body>

@@ -2,7 +2,7 @@ import {drawCameraOverlay} from './matrix_view.mjs';
 import {projectCameraPoint,visiblePointToCanvas} from './camera_geometry.mjs';
 
 function roundBox(ctx,x,y,w,h,r){ctx.beginPath();ctx.roundRect(x,y,w,h,r);}
-export function drawArena(ctx,snapshot,player,{now=0,lastEffect=null,tracking=true,geometry=null}={}) {
+export function drawArena(ctx,snapshot,player,{now=0,lastEffect=null,tracking=true,geometry=null,backdrop=null,marker=false}={}) {
   const w=ctx.canvas.width,h=ctx.canvas.height;
   ctx.clearRect(0,0,w,h);ctx.fillStyle='#101610';ctx.fillRect(0,0,w,h);
   const gradient=ctx.createRadialGradient(w*.5,h*.45,30,w*.5,h*.45,w*.6);
@@ -12,11 +12,15 @@ export function drawArena(ctx,snapshot,player,{now=0,lastEffect=null,tracking=tr
   if(!geometry){ctx.textAlign='center';ctx.font='bold 32px sans-serif';ctx.fillStyle='#fff';ctx.fillText('CALIBRATION REQUIRED',w/2,h/2);ctx.textAlign='left';return {rect:null,cells:[]};}
   const rect=geometry.visible;
   ctx.fillStyle='rgba(15,22,15,.45)';ctx.fillRect(rect.x,rect.y,rect.width,rect.height);
+  if(backdrop)backdrop(ctx,geometry);
   const playing=snapshot.mode==='PLAYING';
   const overlay=drawCameraOverlay(ctx,geometry,playing?snapshot:{...snapshot,attacks:[]},{clear:false});
   const mapped=playing&&tracking&&player?projectCameraPoint({...player,visibility:1},geometry):null;
   const position=visiblePointToCanvas(mapped,geometry);
-  if(position){
+  if(position&&marker){
+    ctx.save();ctx.beginPath();ctx.rect(rect.x,rect.y,rect.width,rect.height);ctx.clip();ctx.strokeStyle='#d9f965';ctx.lineWidth=4;ctx.beginPath();ctx.arc(position.x,position.y,Math.max(10,Math.min(26,rect.width/40)),0,2*Math.PI);ctx.stroke();
+    ctx.fillStyle='#00ffff';ctx.beginPath();ctx.arc(position.x,position.y,5,0,2*Math.PI);ctx.fill();ctx.restore();
+  } else if(position){
     const size=Math.min(1,rect.width/650,rect.height/400);
     ctx.save();ctx.beginPath();ctx.rect(rect.x,rect.y,rect.width,rect.height);ctx.clip();ctx.translate(position.x,position.y);ctx.scale(size,size);
     ctx.fillStyle='rgba(4,9,4,.35)';ctx.beginPath();ctx.ellipse(0,103,74,18,0,0,Math.PI*2);ctx.fill();

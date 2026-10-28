@@ -6,6 +6,7 @@ import { AuthPopupController } from './auth_popup_controller.mjs';
 import { TwitchProvider, LOCAL_CONFIG, LIVE_NETWORK_ENABLED, validateProviderConfig } from './twitch_provider.mjs';
 import { ProviderActivation } from './provider_activation.mjs';
 import { IrcAnonymousChat, normalizeChannel } from './irc_anonymous.mjs';
+import { CameraTracker, PointStabilizer } from './camera_tracker.mjs';
 import { drawArena } from './arena_draw.mjs';
 import {createCameraGeometry,projectCameraPoint,projectCameraFrame,canvasPointToSource,visiblePointToCanvas} from './camera_geometry.mjs';
 import {makeOverlayState,OVERLAY_CLOSED_TYPE} from './overlay_protocol.mjs';
@@ -17,7 +18,7 @@ const player={x:.5,y:.5};
 const poseControls={spread:.1,hip:.5,leftWrist:{x:.25,y:.55},rightWrist:{x:.75,y:.55}};
 const challengeNames={CROSS:'Cross Inferno',FREEZE:'Freeze',MOSQUITO:'Mosquito',LAVA:'Lava'};
 let cameraGeometry=createCameraGeometry({canvasWidth:canvas.width,canvasHeight:canvas.height,viewport:{x:0,y:0,width:canvas.width,height:canvas.height},sourceWidth:1280,sourceHeight:720});
-let eventId=0,tracking=true,lastEffect=null,animationId=0,mockMode=false,chatMode=false,providerActivation=null,configuredProvider=null,ircChat=null;
+let eventId=0,tracking=true,lastEffect=null,animationId=0,mockMode=false,chatMode=false,providerActivation=null,configuredProvider=null,ircChat=null,cameraTracker=null,cameraOn=false,savedGeometry=null;
 let overlaySession=null,overlaySequence=0,lastOverlayUpdate=0,overlayInFlight=0,overlayEnabled=false;
 const modeNames={IDLE:'Ready',PLAYING:'Playing',PAUSED:'Paused',TRACKING_LOST:'Tracking lost',RECOVERING:'Getting ready',ROUND_END:'Round over'};
 const reasons={MODE_BUSY:'Finish the current challenge first',POSE_UNKNOWN:'Not enough joints visible or lava at its cap; restore the joint',FREEZE_COOLDOWN:'Freeze is cooling down',GAME_COOLDOWN:'This game is cooling down',INVALID_LEVEL:'Lava level must be between 0.1 and 0.8',INVALID_COMMAND:'Enter !throw 1-9, !freeze, !mosquito or !lava',ACTOR_COOLDOWN:'This viewer must wait',GLOBAL_COOLDOWN:'Wait a moment before throwing',QUEUE_FULL:'Attack queue full',OFFLINE:'Simulated chat is offline',NOT_PLAYING:'The game cannot accept attacks now',DUPLICATE:'Duplicate event skipped',INVALID_EVENT:'Malformed simulated event'};
@@ -37,7 +38,12 @@ const game=new MatrixGame({onEvent:event=>{
   } else if(event.type==='lavaBurn')feed('Lava burn',`HP ${event.hpDelta} · stand to avoid the lava`);
   else if(event.type==='ringOut')feed('Character left the arena','Out of bounds');
 }});
-const frameSource=new SyntheticFrameSource({game,maxAge:game.config.maxAge,project:frame=>cameraGeometry?projectCameraFrame(frame,cameraGeometry):{...frame,nose:null,leftShoulder:null,rightShoulder:null}});
+const stabilizer=new PointStabilizer();
+const frameSource=new SyntheticFrameSource({game,maxAge:game.config.maxAge,project:frame=>{
+  const out=cameraGeometry?projectCameraFrame(frame,cameraGeometry):{...frame,nose:null,leftShoulder:null,rightShoulder:null};
+  if(cameraOn&&out&&Object.hasOwn(out,'torso'))out.torso=stabilizer.update(out.torso);
+  return out;
+}});
 game.beforeTick=()=>frameSource.sync();
 const adapter=new EventSubAdapter({game,onStatus:status=>{
   if(mockMode||chatMode||providerActivation||ircChat)return;
@@ -130,9 +136,53 @@ function updateScreen(snapshot){
   $('#frame-source-toggle').textContent=frameSource.running?'Simulate frame interruption':'Restore synthetic frames';
 }
 
+// Camera tracking: the page shows the mirrored camera image under the grid; poses come from the in-browser model.
+function pollCamera(){
+  const result=cameraTracker.poll();
+  if(!result.fresh)return;
+  if(result.points)frameSource.capture(result.points);else stabilizer.reset();
+}
+function drawCameraBackdrop(context,geometry){
+  const video=$('#camera-video');if(video.readyState<2)return;
+  const v=geometry.visible,i=geometry.image;
+  context.save();context.beginPath();context.rect(v.x,v.y,v.width,v.height);context.clip();
+  context.translate(i.x+i.width,i.y);context.scale(-1,1);context.drawImage(video,0,0,i.width,i.height);context.restore();
+}
+function setPoseLabels(text,badge){
+  for(const element of document.querySelectorAll('[data-pose-label]'))element.textContent=text;
+  const node=document.querySelector('.simulation-badge');if(node)node.lastChild.textContent=` ${badge}`;
+}
+function setCameraMode(on){
+  cameraOn=on;stabilizer.reset();
+  if(on){
+    const video=$('#camera-video');savedGeometry=cameraGeometry;
+    cameraGeometry=createCameraGeometry({canvasWidth:canvas.width,canvasHeight:canvas.height,viewport:{x:0,y:0,width:canvas.width,height:canvas.height},
+      sourceWidth:video.videoWidth||1280,sourceHeight:video.videoHeight||720,mirror:true,fit:'contain'});
+    setPoseLabels('CAMERA POSE TRACKING','Camera tracking');
+    $('#camera-toggle').textContent='Turn off camera tracking';
+  } else {
+    if(savedGeometry)cameraGeometry=savedGeometry;savedGeometry=null;
+    setPoseLabels('SYNTHETIC POSE INPUT','Synthetic input');
+    $('#camera-toggle').textContent='Turn on camera tracking';
+  }
+  game.invalidateTracking();frameSource.reset();lastEffect=null;
+}
+$('#camera-toggle').addEventListener('click',async()=>{
+  const button=$('#camera-toggle');
+  if(cameraOn||cameraTracker){cameraTracker?.stop();cameraTracker=null;setCameraMode(false);$('#camera-status').textContent='Camera off. Keyboard or mouse input is used.';return;}
+  button.disabled=true;$('#camera-status').textContent='Starting camera and loading the pose model…';
+  const labels={CAMERA_DENIED:'Camera permission was denied. Allow the camera for this page and try again.',CAMERA_UNSUPPORTED:'This browser cannot open a camera here. Use http://localhost:4173/.',MODEL_FAILED:'The pose model could not start.'};
+  const tracker=new CameraTracker({video:$('#camera-video'),onStatus:(status,detail)=>{if(status==='FAILED')$('#camera-status').textContent=labels[detail]??'Camera tracking failed.';}});
+  const ok=await tracker.start();
+  button.disabled=false;
+  if(!ok)return;
+  cameraTracker=tracker;setCameraMode(true);$('#camera-status').textContent='Camera tracking on. Stand back so your head and shoulders are in view.';
+});
 function loop(){
-  const now=performance.now();addSyntheticFrame();const snapshot=game.tick();
-  drawArena(ctx,snapshot,frameSource.lastFrame?.nose??null,{now,lastEffect,tracking:frameSource.running&&Boolean(frameSource.lastFrame?.nose),geometry:cameraGeometry});updateScreen(snapshot);
+  const now=performance.now();if(cameraOn)pollCamera();else addSyntheticFrame();const snapshot=game.tick();
+  const last=frameSource.lastFrame,anchor=cameraOn?(last?.torso??last?.nose??null):(last?.nose??null);
+  drawArena(ctx,snapshot,anchor,{now,lastEffect,tracking:frameSource.running&&Boolean(anchor),geometry:cameraGeometry,
+    backdrop:cameraOn?drawCameraBackdrop:null,marker:cameraOn});updateScreen(snapshot);
   if(now-lastOverlayUpdate>=100){lastOverlayUpdate=now;publishOverlay(snapshot);}
   animationId=requestAnimationFrame(loop);
 }
@@ -333,6 +383,6 @@ $('#reset').addEventListener('click',()=>{
 document.addEventListener('visibilitychange',()=>{
   if(document.hidden){frameSource.stop();if(game.mode==='PLAYING'||game.mode==='TRACKING_LOST'||game.mode==='RECOVERING')game.pause();feed('Game paused','Judging pauses while the page is hidden');const snapshot=game.tick();updateScreen(snapshot);publishOverlay(snapshot,{force:true});}
 });
-window.addEventListener('pagehide',()=>{stopOverlaySync();cancelAnimationFrame(animationId);transport.stop();chatTransport.stop();popupController?.dispose();providerActivation?.stop();ircChat?.stop();oauth.clear();});
+window.addEventListener('pagehide',()=>{stopOverlaySync();cancelAnimationFrame(animationId);transport.stop();chatTransport.stop();cameraTracker?.stop();popupController?.dispose();providerActivation?.stop();ircChat?.stop();oauth.clear();});
 
 syncProviderControls();game.start();addSyntheticFrame();game.tick();adapter.ingest(syntheticWelcome());animationId=requestAnimationFrame(loop);

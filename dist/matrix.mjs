@@ -8,6 +8,11 @@ export function validPoint(point, threshold = 0.55) {
     finite(point.visibility) && point.visibility >= threshold && point.visibility <= 1);
 }
 
+// Position used for judging: the shoulder midpoint (`torso`, steadier than the nose) when the producer supplies a usable one, else the nose.
+export function anchorPoint(frame, threshold = 0.55) {
+  return validPoint(frame?.torso, threshold) ? frame.torso : frame?.nose ?? null;
+}
+
 export function gridCell(point, threshold = 0.55) {
   if (!validPoint(point, threshold) || point.x < 0 || point.x > 1 || point.y < 0 || point.y > 1) return null;
   return Math.min(2, Math.floor(point.y * 3)) * 3 + Math.min(2, Math.floor(point.x * 3)) + 1;
@@ -89,7 +94,7 @@ export class MatrixGame {
 
   frameUsable(frame, at) {
     return Boolean(frame && frame.captureTime <= at && at - frame.captureTime <= this.config.maxAge &&
-      validPoint(frame.nose, this.config.confidence));
+      validPoint(anchorPoint(frame, this.config.confidence), this.config.confidence));
   }
   expireSource(now) {
     if (!finite(now) || now<this.wall) throw new RangeError('Clock must be monotonic');
@@ -109,6 +114,7 @@ export class MatrixGame {
     const copy = { frameId:frame.frameId, captureTime:frame.captureTime,
       nose:point(frame.nose), leftShoulder:point(frame.leftShoulder), rightShoulder:point(frame.rightShoulder) };
     for(const joint of ['leftElbow','rightElbow','leftWrist','rightWrist','leftHip','rightHip'])if(Object.hasOwn(frame,joint))copy[joint]=point(frame[joint]);
+    if(Object.hasOwn(frame,'torso'))copy.torso=point(frame.torso);
     this.latestFrame = copy; this.frames.push(copy);
     if (this.frames.length > 64) this.frames.shift();
     this.seenFrameIds.add(frame.frameId); this.frameIdOrder.push(frame.frameId);
@@ -184,7 +190,7 @@ export class MatrixGame {
 
   resolve(attack, atWall) {
     const frame = [...this.frames].reverse().find(f => f.captureTime <= atWall) ?? null;
-    const point = this.frameUsable(frame, atWall) ? frame.nose : null;
+    const point = this.frameUsable(frame, atWall) ? anchorPoint(frame, this.config.confidence) : null;
     const current = gridCell(point, this.config.confidence);
     const outcome = current === null ? 'UNKNOWN' : (attack.cells ?? [attack.cell]).includes(current) ? 'HIT' : 'DODGE';
     const hpBefore = this.hp, scoreBefore = this.score;

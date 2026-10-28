@@ -1,0 +1,90 @@
+// Camera pose input. The pose model (MediaPipe Pose Landmarker, Apache-2.0) runs in this browser tab; no video frame is uploaded anywhere.
+export const POSE_ASSETS=Object.freeze({bundle:'./vendor/mediapipe/vision_bundle.mjs',wasm:'./vendor/mediapipe/wasm',model:'./vendor/mediapipe/pose_landmarker_lite.task'});
+// MediaPipe pose landmark indices ("left" is the person's own left).
+export const LANDMARKS=Object.freeze({nose:0,leftShoulder:11,rightShoulder:12,leftElbow:13,rightElbow:14,leftWrist:15,rightWrist:16,leftHip:23,rightHip:24});
+const finite=Number.isFinite;
+
+function toPoint(landmark) {
+  if(!landmark || !finite(landmark.x) || !finite(landmark.y))return null;
+  if(landmark.x<0 || landmark.x>1 || landmark.y<0 || landmark.y>1)return null;
+  const visibility=finite(landmark.visibility)?Math.max(0,Math.min(1,landmark.visibility)):0;
+  return {x:landmark.x,y:landmark.y,visibility};
+}
+// Landmarks (normalized to the unmirrored source frame) -> the joint names the game uses, plus the shoulder midpoint `torso`.
+export function landmarksToPoints(landmarks) {
+  if(!Array.isArray(landmarks))return null;
+  const points={};
+  for(const [name,index] of Object.entries(LANDMARKS))points[name]=toPoint(landmarks[index]);
+  const a=points.leftShoulder,b=points.rightShoulder;
+  points.torso=a&&b?{x:(a.x+b.x)/2,y:(a.y+b.y)/2,visibility:Math.min(a.visibility,b.visibility)}:null;
+  return points;
+}
+
+const cellOf=p=>Math.min(2,Math.floor(p.y*3))*3+Math.min(2,Math.floor(p.x*3))+1;
+const clamp=(n,lo,hi)=>Math.max(lo,Math.min(hi,n));
+// Smooths a point and keeps it in its current grid cell until it is clearly (by `margin`) inside another,
+// so standing on a grid line does not flip the judged cell from frame to frame. Works in visible-region coordinates (0..1).
+export class PointStabilizer {
+  constructor({alpha=.5,margin=.03}={}) {
+    if(!(alpha>0&&alpha<=1) || !(margin>=0&&margin<.16))throw new RangeError('INVALID_STABILIZER');
+    this.alpha=alpha;this.margin=margin;this.reset();
+  }
+  reset(){this.last=null;this.cell=null;}
+  update(point) {
+    if(!point || !finite(point.x) || !finite(point.y)){this.reset();return null;}
+    const smooth=this.last?{x:this.last.x+this.alpha*(point.x-this.last.x),y:this.last.y+this.alpha*(point.y-this.last.y)}:{x:point.x,y:point.y};
+    let out=smooth;
+    const cell=cellOf(smooth);
+    if(this.cell && cell!==this.cell) {
+      const col=(this.cell-1)%3,row=Math.floor((this.cell-1)/3),x0=col/3,x1=(col+1)/3,y0=row/3,y1=(row+1)/3;
+      const dx=Math.max(x0-smooth.x,0,smooth.x-x1),dy=Math.max(y0-smooth.y,0,smooth.y-y1);
+      if(Math.max(dx,dy)<this.margin)out={x:clamp(smooth.x,x0+1e-6,x1-1e-6),y:clamp(smooth.y,y0+1e-6,y1-1e-6)};
+    }
+    this.last=smooth;this.cell=cellOf(out);
+    return {x:out.x,y:out.y,visibility:point.visibility};
+  }
+}
+
+export class CameraTracker {
+  constructor({video,mediaDevices=globalThis.navigator?.mediaDevices,loadVision=()=>import(POSE_ASSETS.bundle),assets=POSE_ASSETS,clock=()=>performance.now(),onStatus=()=>{}}={}) {
+    if(!video)throw new TypeError('A video element is required');
+    this.video=video;this.mediaDevices=mediaDevices;this.loadVision=loadVision;this.assets=assets;this.clock=clock;this.onStatus=onStatus;
+    this.status='OFF';this.stream=null;this.landmarker=null;this.lastVideoTime=-1;this.lastStamp=-1;
+  }
+  #set(status,detail){this.status=status;this.onStatus(status,detail);}
+  async start() {
+    if(this.status==='STARTING'||this.status==='ON')return false;
+    this.#set('STARTING');
+    try {
+      if(typeof this.mediaDevices?.getUserMedia!=='function')throw new Error('CAMERA_UNSUPPORTED');
+      this.stream=await this.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:1280},height:{ideal:720}},audio:false});
+      this.video.srcObject=this.stream;this.video.muted=true;this.video.playsInline=true;await this.video.play();
+      const vision=await this.loadVision();
+      const fileset=await vision.FilesetResolver.forVisionTasks(this.assets.wasm);
+      const options=delegate=>({baseOptions:{modelAssetPath:this.assets.model,delegate},runningMode:'VIDEO',numPoses:1,
+        minPoseDetectionConfidence:.5,minPosePresenceConfidence:.5,minTrackingConfidence:.5});
+      try{this.landmarker=await vision.PoseLandmarker.createFromOptions(fileset,options('GPU'));}
+      catch{this.landmarker=await vision.PoseLandmarker.createFromOptions(fileset,options('CPU'));}
+      this.#set('ON');return true;
+    } catch(error) {
+      this.#teardown();
+      this.#set('FAILED',error?.name==='NotAllowedError'?'CAMERA_DENIED':error?.message==='CAMERA_UNSUPPORTED'?'CAMERA_UNSUPPORTED':'MODEL_FAILED');
+      return false;
+    }
+  }
+  // Returns {fresh,points}. `fresh` is false while the video has no new frame since the last call; `points` is null when no person is found.
+  poll() {
+    if(this.status!=='ON'||!this.landmarker||this.video.readyState<2||this.video.currentTime===this.lastVideoTime)return {fresh:false,points:null};
+    this.lastVideoTime=this.video.currentTime;
+    const stamp=Math.max(this.lastStamp+1,Math.floor(this.clock()));this.lastStamp=stamp;
+    let result;try{result=this.landmarker.detectForVideo(this.video,stamp);}catch{return {fresh:true,points:null};}
+    return {fresh:true,points:landmarksToPoints(result?.landmarks?.[0])};
+  }
+  #teardown() {
+    try{this.landmarker?.close();}catch{/* already closed */}
+    this.landmarker=null;
+    for(const track of this.stream?.getTracks?.()??[])track.stop();
+    this.stream=null;this.video.srcObject=null;this.lastVideoTime=-1;this.lastStamp=-1;
+  }
+  stop(){this.#teardown();this.#set('OFF');}
+}

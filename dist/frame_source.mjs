@@ -17,6 +17,7 @@ export class SyntheticFrameSource {
     if(!frame||frame.epoch!==this.epoch||!Number.isSafeInteger(frame.sequence)||frame.sequence<=this.lastSequence||!Number.isFinite(frame.captureTime)||frame.captureTime<=this.watermark||frame.captureTime<=this.lastCapture||frame.captureTime>now||now-frame.captureTime>this.maxAge)return false;
     const clone=p=>p?{x:p.x,y:p.y,visibility:p.visibility}:null;
     const accepted={frameId:`synthetic-${frame.epoch}-${frame.sequence}`,epoch:frame.epoch,sequence:frame.sequence,captureTime:frame.captureTime,nose:clone(frame.nose),leftShoulder:clone(frame.leftShoulder),rightShoulder:clone(frame.rightShoulder)};
+    if(Object.hasOwn(frame,'torso'))accepted.torso=clone(frame.torso);
     for(const joint of ['leftElbow','rightElbow','leftWrist','rightWrist','leftHip','rightHip'])if(Object.hasOwn(frame,joint))accepted[joint]=clone(frame[joint]);
     let projected;
     this.projecting=true;

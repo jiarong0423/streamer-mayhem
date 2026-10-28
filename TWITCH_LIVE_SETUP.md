@@ -24,7 +24,8 @@ You need a Twitch account (with two-factor authentication enabled, which Twitch 
 2. In **Connect to Twitch**, enter the client ID, broadcaster ID and the callback URL from step 1.
 3. Click **Authorize and subscribe**. A Twitch consent popup asks for the `user:read:chat` scope. Approve it with the broadcaster account.
 4. When the status shows connected, type `!throw 5` (or `!freeze`, `!mosquito`, `!lava`; Cross Inferno is started from the controller button, not by chat) in your Twitch chat. The arena reacts and the warning appears on the overlay.
-5. Open the overlay link shown on the controller page as an OBS Browser Source (1920x1080, transparent background) above your camera.
+5. Optional: press **Turn on camera tracking** and allow the camera; stand back so your head and shoulders are in view and keep the camera fixed (16:9, landscape).
+6. Open the overlay link shown on the controller page as an OBS Browser Source (1920x1080, transparent background) above your camera.
 
 ## Troubleshooting
 
