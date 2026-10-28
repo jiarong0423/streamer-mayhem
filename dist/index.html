@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://id.twitch.tv https://api.twitch.tv wss://eventsub.wss.twitch.tv http://127.0.0.1:8080 ws://127.0.0.1:8080 http://127.0.0.1:8091 ws://127.0.0.1:8091; object-src 'none'; base-uri 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://id.twitch.tv https://api.twitch.tv wss://eventsub.wss.twitch.tv wss://irc-ws.chat.twitch.tv http://127.0.0.1:8080 ws://127.0.0.1:8080 http://127.0.0.1:8091 ws://127.0.0.1:8091; object-src 'none'; base-uri 'none'">
   <meta name="description" content="Streamer Mayhem: Twitch chat attacks, the streamer dodges.">
   <title>Streamer Mayhem — Synthetic Arcade</title>
   <link rel="stylesheet" href="./styles.css">
@@ -52,6 +52,13 @@
             <p id="challenge-status" class="command-feedback" role="status">Pick a game to start; one challenge at a time.</p>
             <p class="card-description">Cross Inferno: after 1.5 s the cross cells are hit; move to a corner (1, 3, 7, 9). A hit costs 15 HP, a dodge scores 25.</p>
             <div class="mini-actions"><button id="pause" type="button">Ⅱ Pause game</button></div>
+
+            <details class="provider-settings" open><summary>Connect to Twitch chat without login</summary>
+              <p>Reads a public channel's chat anonymously (read-only). No account, token or Twitch application is needed. Chat commands such as <code>!throw 5</code> trigger attacks.</p>
+              <label>Channel name <input id="irc-channel" maxlength="26" autocomplete="off" placeholder="your_channel"></label>
+              <div class="provider-actions"><button id="irc-start" type="button">Connect without login (read-only)</button></div>
+              <p id="irc-status" role="status">Not connected.</p>
+            </details>
 
             <details class="provider-settings" open><summary>Connect to Twitch</summary>
               <p>Enter your own Twitch application details. They stay in this page's memory only. Register <code>http://localhost:4173/oauth-callback.html</code> as the OAuth redirect URL (Twitch accepts http only for localhost) and open this page at <code>http://localhost:4173/</code>.</p>

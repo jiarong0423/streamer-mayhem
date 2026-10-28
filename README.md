@@ -13,7 +13,7 @@ A Twitch interactive game where chat attacks the streamer and the streamer dodge
   - Lava (`!lava`): rising lava over 8 s; stand or crouch to stay above the surface.
 - **Fair by construction.** One result per event, message-ID dedupe, per-user cooldowns, bounded queue, and tracking loss yields UNKNOWN (no damage, no score) instead of a wrong hit.
 - **OBS overlay.** A transparent Browser Source page receives game state over a local relay and draws the warnings on top of the streamer's camera.
-- **Twitch connection.** OAuth implicit grant plus an EventSub WebSocket `channel.chat.message` subscription, with reconnect, keepalive watchdog and revocation handling. The token stays in page memory and is never written to disk or logs.
+- **Twitch connection.** OAuth implicit grant plus an EventSub WebSocket `channel.chat.message` subscription, with reconnect, keepalive watchdog and revocation handling. The token stays in page memory and is never written to disk or logs. A second, login-free path reads a public channel's chat anonymously over Twitch's IRC WebSocket (`dist/irc_anonymous.mjs`, read-only, no account or Twitch application); both paths feed the same game rules.
 
 ## Requirements
 
@@ -27,7 +27,7 @@ node scripts/serve-local.mjs
 
 Open `http://127.0.0.1:4173/`. Without any Twitch setup the page runs in clearly labeled `SIMULATED` mode: click the numbered buttons or type `!throw 3` in the audience simulator.
 
-To connect to real Twitch, follow [TWITCH_LIVE_SETUP.md](TWITCH_LIVE_SETUP.md).
+To connect to real Twitch, follow [TWITCH_LIVE_SETUP.md](TWITCH_LIVE_SETUP.md). Quickest path: in **Connect to Twitch chat without login**, type a channel name and press Connect.
 
 ## Test
 
@@ -40,7 +40,7 @@ Tests use fake clocks, synthetic event IDs and generated landmarks. Some integra
 ## Honest scope
 
 - Body tracking in this repository is driven by synthetic five-joint frames and keyboard/mouse input. A real camera pose model is not bundled.
-- Twitch chat is verified against the local protocol simulator and the Twitch CLI mock. Live chat delivery depends on the streamer completing OAuth with their own Twitch app.
+- Twitch chat is verified against the local protocol simulator and the Twitch CLI mock. The anonymous IRC path was checked against live Twitch (it joined a public channel and received the room ID); its message parsing is covered by unit tests with a fake socket. The OAuth/EventSub path needs the streamer's own Twitch app.
 - OBS behaviour was verified in a synthetic Browser Source profile.
 
 ## Layout

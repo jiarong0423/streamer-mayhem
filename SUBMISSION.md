@@ -11,12 +11,12 @@ StreamerMayhem turns a Twitch chat into the attacker and the streamer into the d
 
 Why it works on stream: viewers see the danger before the streamer reacts, so the audience is in on the joke; the streamer gets a readable warning instead of a surprise. Fairness is built in. Each chat event produces exactly one result, duplicate message IDs are dropped, users are rate-limited, the queue is bounded, and when body tracking is lost an attack resolves as UNKNOWN with no damage and no score instead of a wrong hit.
 
-Twitch integration: OAuth implicit grant and an EventSub WebSocket `channel.chat.message` subscription with reconnect, keepalive watchdog and revocation handling. Tokens live only in page memory.
+Twitch integration: two paths into the same rules core. (1) Login-free: an anonymous read-only IRC WebSocket client that reads a channel's chat and normalizes it into the same events, with reconnect and backoff. (2) OAuth implicit grant and an EventSub WebSocket `channel.chat.message` subscription with reconnect, keepalive watchdog and revocation handling. Tokens live only in page memory.
 
 Limits, stated plainly: body tracking in this repository is driven by synthetic five-joint frames and keyboard/mouse input; a camera pose model is not bundled. The test suite covers game rules, the Twitch adapter and the overlay protocol with fake clocks and a local Twitch protocol simulator.
 
 ## How we used Codex
-Codex was the main developer. In Codex sessions we designed the shared rules core, wrote the EventSub adapter and OAuth flow, defined the versioned overlay protocol, and wrote the Node test suite. Independent review of each stage was done by a separate reviewer against frozen file hashes, and Codex fixed the issues it raised (for example a tie between tracking loss and an attack deadline that wrongly counted a HIT).
+Codex was the main developer. In Codex sessions we designed the shared rules core, wrote the EventSub adapter and OAuth flow, defined the versioned overlay protocol, and wrote the Node test suite. Independent review of each stage was done by a separate reviewer against frozen file hashes, and Codex fixed the issues it raised (for example a tie between tracking loss and an attack deadline that wrongly counted a HIT). After the Codex subscription ended, the final integration pass (English UI, the login-free IRC chat path, submission packaging) was done with Claude Code; this is disclosed here for transparency.
 
 ## Codex session ID
 Official wording: the thread where most of the project was built (type `/status` in Codex).

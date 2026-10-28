@@ -1,6 +1,14 @@
 # Connecting StreamerMayhem to real Twitch
 
-You need a Twitch account and a free Twitch developer application. Credentials are entered only by you, in your browser. The page keeps them in memory; nothing is written to disk.
+## Option A: no login (fastest)
+
+1. `node scripts/serve-local.mjs`, open `http://localhost:4173/`.
+2. In **Connect to Twitch chat without login**, type the channel name and press **Connect without login (read-only)**.
+3. When the status shows `Live chat connected`, any viewer typing `!throw 5` in that channel's chat triggers an attack. This path is read-only and uses an anonymous `justinfan` IRC identity: no account, token or Twitch application.
+
+## Option B: OAuth + EventSub
+
+You need a Twitch account (with two-factor authentication enabled, which Twitch requires to register an application) and a free Twitch developer application. Credentials are entered only by you, in your browser. The page keeps them in memory; nothing is written to disk.
 
 ## One-time setup
 

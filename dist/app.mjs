@@ -5,6 +5,7 @@ import { MockOAuth } from './mock_oauth.mjs';
 import { AuthPopupController } from './auth_popup_controller.mjs';
 import { TwitchProvider, LOCAL_CONFIG, LIVE_NETWORK_ENABLED, validateProviderConfig } from './twitch_provider.mjs';
 import { ProviderActivation } from './provider_activation.mjs';
+import { IrcAnonymousChat, normalizeChannel } from './irc_anonymous.mjs';
 import { drawArena } from './arena_draw.mjs';
 import {createCameraGeometry,projectCameraPoint,projectCameraFrame,canvasPointToSource,visiblePointToCanvas} from './camera_geometry.mjs';
 import {makeOverlayState,OVERLAY_CLOSED_TYPE} from './overlay_protocol.mjs';
@@ -16,7 +17,7 @@ const player={x:.5,y:.5};
 const poseControls={spread:.1,hip:.5,leftWrist:{x:.25,y:.55},rightWrist:{x:.75,y:.55}};
 const challengeNames={CROSS:'Cross Inferno',FREEZE:'Freeze',MOSQUITO:'Mosquito',LAVA:'Lava'};
 let cameraGeometry=createCameraGeometry({canvasWidth:canvas.width,canvasHeight:canvas.height,viewport:{x:0,y:0,width:canvas.width,height:canvas.height},sourceWidth:1280,sourceHeight:720});
-let eventId=0,tracking=true,lastEffect=null,animationId=0,mockMode=false,chatMode=false,providerActivation=null,configuredProvider=null;
+let eventId=0,tracking=true,lastEffect=null,animationId=0,mockMode=false,chatMode=false,providerActivation=null,configuredProvider=null,ircChat=null;
 let overlaySession=null,overlaySequence=0,lastOverlayUpdate=0,overlayInFlight=0,overlayEnabled=false;
 const modeNames={IDLE:'Ready',PLAYING:'Playing',PAUSED:'Paused',TRACKING_LOST:'Tracking lost',RECOVERING:'Getting ready',ROUND_END:'Round over'};
 const reasons={MODE_BUSY:'Finish the current challenge first',POSE_UNKNOWN:'Not enough joints visible or lava at its cap; restore the joint',FREEZE_COOLDOWN:'Freeze is cooling down',GAME_COOLDOWN:'This game is cooling down',INVALID_LEVEL:'Lava level must be between 0.1 and 0.8',INVALID_COMMAND:'Enter !throw 1-9, !freeze, !mosquito or !lava',ACTOR_COOLDOWN:'This viewer must wait',GLOBAL_COOLDOWN:'Wait a moment before throwing',QUEUE_FULL:'Attack queue full',OFFLINE:'Simulated chat is offline',NOT_PLAYING:'The game cannot accept attacks now',DUPLICATE:'Duplicate event skipped',INVALID_EVENT:'Malformed simulated event'};
@@ -39,7 +40,7 @@ const game=new MatrixGame({onEvent:event=>{
 const frameSource=new SyntheticFrameSource({game,maxAge:game.config.maxAge,project:frame=>cameraGeometry?projectCameraFrame(frame,cameraGeometry):{...frame,nose:null,leftShoulder:null,rightShoulder:null}});
 game.beforeTick=()=>frameSource.sync();
 const adapter=new EventSubAdapter({game,onStatus:status=>{
-  if(mockMode||chatMode||providerActivation)return;
+  if(mockMode||chatMode||providerActivation||ircChat)return;
   const online=status==='SIMULATED_ONLINE';$('#connection-badge').textContent=online?'Simulated connection':'Simulated disconnect';
   $('#connection').textContent=online?'↯ Simulate disconnect':'↻ Restore simulation';
 }});
@@ -214,9 +215,12 @@ $('#provider-form').addEventListener('submit',event=>{
 });
 // Both buttons use the same lifecycle; the live button cannot bypass the hard lock.
 function syncProviderControls(){
-  const busy=Boolean(providerActivation),otherBusy=mockMode||chatMode||Boolean(popupController?.pending);
-  $('#provider-local').disabled=otherBusy;
-  $('#provider-local').textContent=busy?'Stop / cancel local simulation':'Test with local simulator';
+  const busy=Boolean(providerActivation)||Boolean(ircChat),otherBusy=mockMode||chatMode||Boolean(popupController?.pending);
+  $('#provider-local').disabled=otherBusy||Boolean(ircChat);
+  $('#irc-start').disabled=Boolean(providerActivation)||otherBusy;
+  $('#irc-start').textContent=ircChat?'Disconnect':'Connect without login (read-only)';
+  $('#irc-channel').disabled=Boolean(ircChat);
+  $('#provider-local').textContent=providerActivation?'Stop / cancel local simulation':'Test with local simulator';
   $('#provider-live').disabled=!LIVE_NETWORK_ENABLED||!configuredProvider||busy||otherBusy;
   $('#provider-live').textContent=LIVE_NETWORK_ENABLED?'Authorize and subscribe':'Authorize and subscribe (unavailable)';
   for(const element of $('#provider-form').elements)element.disabled=busy;
@@ -232,7 +236,7 @@ function finishProvider(message){
   $('#provider-status').textContent=message;syncProviderControls();
 }
 function startProvider(mode){
-  if(providerActivation||mockMode||chatMode||popupController?.pending)return;
+  if(providerActivation||ircChat||mockMode||chatMode||popupController?.pending)return;
   if(mode==='live'&&(!LIVE_NETWORK_ENABLED||!configuredProvider)){$('#provider-status').textContent='Live connection unavailable or settings not validated.';return;}
   if(!['http://127.0.0.1:4173','http://localhost:4173'].includes(location.origin)){$('#provider-status').textContent='Open this page at localhost:4173 or 127.0.0.1:4173.';return;}
   const prefix=mode==='local'?'Local simulation':'Twitch';
@@ -260,6 +264,26 @@ function startProvider(mode){
 }
 $('#provider-local').addEventListener('click',()=>{if(providerActivation)finishProvider('Local simulation stopped.');else startProvider('local');});
 $('#provider-live').addEventListener('click',()=>startProvider('live'));
+// Anonymous read-only chat: no account, token or Twitch application is needed.
+function stopIrc(message){
+  const current=ircChat;if(!current)return;
+  ircChat=null;current.stop();adapter.ingest(syntheticWelcome());
+  $('#irc-status').textContent=message;$('#connection-badge').textContent='Simulated connection';syncProviderControls();
+}
+$('#irc-start').addEventListener('click',()=>{
+  if(ircChat){stopIrc('Disconnected.');return;}
+  if(providerActivation||mockMode||chatMode||popupController?.pending)return;
+  let channel;try{channel=normalizeChannel($('#irc-channel').value);}catch{$('#irc-status').textContent='Enter a Twitch channel name (letters, digits, underscore).';return;}
+  const labels={CONNECTING:'Connecting',ONLINE:`Live chat connected: #${channel}`,RETRYING:'Reconnecting'};
+  const chat=new IrcAnonymousChat({channel,game,
+    onStatus:(status,detail)=>{
+      if(ircChat!==chat)return;
+      if(labels[status]){$('#irc-status').textContent=labels[status];$('#connection-badge').textContent=`Twitch chat: ${labels[status]}`;}
+      if(status==='STOPPED')stopIrc(`Connection stopped (${detail??'unknown'}); press Connect to retry.`);
+    },
+    onDelivery:result=>{if(result.accepted)feed('Twitch chat attack',`!throw ${result.cell} · 0.5 s warning`);}});
+  ircChat=chat;adapter.disconnect();syncProviderControls();chat.start();
+});
 
 function pointInput(event){
   const rect=canvas.getBoundingClientRect();const source=canvasPointToSource({x:(event.clientX-rect.left)*canvas.width/rect.width,y:(event.clientY-rect.top)*canvas.height/rect.height},cameraGeometry);
@@ -300,7 +324,7 @@ $('#auth-mock-toggle').addEventListener('click',()=>{
 window.addEventListener('message',event=>{popupController?.handleMessage(event);providerActivation?.handleMessage(event);});
 $('#reset').addEventListener('click',()=>{
   game.reset();frameSource.reset();player.x=.5;player.y=.5;tracking=true;lastEffect=null;game.start();
-  if(providerActivation)game.setConnection(providerActivation.provider.transport.status==='ONLINE');else if(mockMode||chatMode)game.setConnection((chatMode?chatTransport:transport).status==='ONLINE');else adapter.ingest(syntheticWelcome());
+  if(ircChat)game.setConnection(ircChat.status==='ONLINE');else if(providerActivation)game.setConnection(providerActivation.provider.transport.status==='ONLINE');else if(mockMode||chatMode)game.setConnection((chatMode?chatTransport:transport).status==='ONLINE');else adapter.ingest(syntheticWelcome());
   poseControls.spread=.1;poseControls.hip=.5;poseControls.leftWrist={x:.25,y:.55};poseControls.rightWrist={x:.75,y:.55};
   $('#elbow-spread').value='10';$('#elbow-value').textContent='10%';for(const id of ['elbow-known','wrist-known','hip-known'])$(`#${id}`).checked=true;
   addSyntheticFrame();game.tick();
@@ -309,6 +333,6 @@ $('#reset').addEventListener('click',()=>{
 document.addEventListener('visibilitychange',()=>{
   if(document.hidden){frameSource.stop();if(game.mode==='PLAYING'||game.mode==='TRACKING_LOST'||game.mode==='RECOVERING')game.pause();feed('Game paused','Judging pauses while the page is hidden');const snapshot=game.tick();updateScreen(snapshot);publishOverlay(snapshot,{force:true});}
 });
-window.addEventListener('pagehide',()=>{stopOverlaySync();cancelAnimationFrame(animationId);transport.stop();chatTransport.stop();popupController?.dispose();providerActivation?.stop();oauth.clear();});
+window.addEventListener('pagehide',()=>{stopOverlaySync();cancelAnimationFrame(animationId);transport.stop();chatTransport.stop();popupController?.dispose();providerActivation?.stop();ircChat?.stop();oauth.clear();});
 
 syncProviderControls();game.start();addSyntheticFrame();game.tick();adapter.ingest(syntheticWelcome());animationId=requestAnimationFrame(loop);
