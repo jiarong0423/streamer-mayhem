@@ -178,3 +178,30 @@ test('DROP-18 a forged overlay drop without cells, with a bad variant or out-of-
   const bomb=make({cell:5,kind:'DROP',cells:[2,5,8],progress:.5,variant:'BOMB'});assert.equal(bomb.snapshot.attacks[0].variant,'BOMB');
   assert.deepEqual(make({cell:5}).snapshot.attacks,[{cell:5}]);
 });
+
+import {parseMosquitoCommand} from '../dist/matrix.mjs';
+test('MOSQ-CORE-01 !mosquito is a command, with the same cleaning and cooldowns, and one at a time',()=>{
+  for(const ok of ['!mosquito','  !MOSQUITO ','!mosquito\u{E0000}'])assert.equal(parseMosquitoCommand(ok),true,JSON.stringify(ok));
+  for(const bad of ['!mosquito 1','!mosquitos','mosquito','',null,'!mosquito'+' '.repeat(100)])assert.equal(parseMosquitoCommand(bad),false);
+  const s=setup();s.feed(100,{x:.5,y:.5,visibility:1});
+  const r=s.send('!mosquito');assert.equal(r.accepted,true);assert.equal(r.kind,'FACE_MOSQUITO');
+  assert.ok(s.events.some(e=>e.type==='faceMosquito'));assert.equal(s.game.snapshot().attacks.length,0);
+  s.feed(s.clock.now+500,{x:.5,y:.5,visibility:1});assert.equal(s.send('!mosquito','b').reason,'GAME_COOLDOWN');
+  s.feed(s.clock.now+11000,{x:.5,y:.5,visibility:1});s.game.setFaceMosquitoBusy(true);assert.equal(s.send('!mosquito','c').reason,'MODE_BUSY');
+  s.game.setFaceMosquitoBusy(false);assert.equal(s.send('!mosquito','d').accepted,true);
+});
+test('MOSQ-CORE-02 settling: swat and dodge score, a bite costs health and points (not below zero), unknown costs nothing',()=>{
+  const s=setup();s.feed(100,{x:.5,y:.5,visibility:1});const g=s.game;
+  let r=g.settleFaceMosquito({outcome:'SWAT',reason:'FACE_SLAP',approaches:2});assert.equal(r.scoreDelta,50);assert.equal(g.score,50);assert.equal(r.kind,'FACE_MOSQUITO');
+  r=g.settleFaceMosquito({outcome:'DODGE'});assert.equal(g.score,75);
+  r=g.settleFaceMosquito({outcome:'BITE',reason:'NOT_SLAPPED'});assert.equal(r.hpDelta,-5);assert.equal(r.scoreDelta,-25);assert.equal(g.hp,95);assert.equal(g.score,50);
+  g.settleFaceMosquito({outcome:'BITE'});g.settleFaceMosquito({outcome:'BITE'});g.settleFaceMosquito({outcome:'BITE'});assert.equal(g.score,0);assert.equal(g.hp,80);
+  r=g.settleFaceMosquito({outcome:'UNKNOWN',reason:'FACE_LOST'});assert.equal(r.hpDelta,0);assert.equal(r.scoreDelta,0);
+  assert.equal(g.settleFaceMosquito({outcome:'WIN'}),null);assert.equal(g.settleFaceMosquito(),null);
+  assert.ok(s.events.filter(e=>e.type==='result'&&e.kind==='FACE_MOSQUITO').length>=6);
+});
+test('MOSQ-CORE-03 a bite that empties health ends the round; settling outside play is ignored',()=>{
+  const s=setup({faceBiteDamage:100});s.feed(100,{x:.5,y:.5,visibility:1});
+  s.game.settleFaceMosquito({outcome:'BITE'});assert.equal(s.game.hp,0);assert.equal(s.game.snapshot().mode,'ROUND_END');
+  assert.equal(s.game.settleFaceMosquito({outcome:'SWAT'}),null);
+});

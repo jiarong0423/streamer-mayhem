@@ -77,8 +77,9 @@
             <div id="throw-grid" class="throw-grid" aria-label="Simulated viewer throw"><button type="button" data-throw="1">1</button><button type="button" data-throw="2">2</button><button type="button" data-throw="3">3</button><button type="button" data-throw="4">4</button><button type="button" data-throw="5">5</button><button type="button" data-throw="6">6</button><button type="button" data-throw="7">7</button><button type="button" data-throw="8">8</button><button type="button" data-throw="9">9</button></div>
             <div class="command-or"><span></span> OR TYPE A COMMAND <span></span></div>
             <form id="chat-form" class="chat-form"><label for="chat-input" class="sr-only">Enter a simulated chat command</label><span>›</span><input id="chat-input" maxlength="100" placeholder="!throw 5" autocomplete="off"><button type="submit" aria-label="Send simulated command">↗</button></form>
+            <div class="mini-actions"><button id="face-mosquito" type="button">Send a mosquito at my face</button><button id="swat" type="button">Swat (no camera)</button></div>
             <label class="check-row"><input id="auto-drops" type="checkbox"> Auto drops (random gold items and bombs, gets harder)</label>
-            <p id="command-feedback" class="command-feedback" role="status">Try !throw 1–9, !drop 1–3, !bomb 1–3, !freeze, !mosquito or !lava</p>
+            <p id="command-feedback" class="command-feedback" role="status">Try !throw 1–9, !drop 1–3, !bomb 1–3, !mosquito, !freeze or !lava</p>
             </details>
             <details class="provider-settings"><summary>Advanced: connect with your own Twitch app (OAuth + EventSub)</summary>
               <p>Enter your own Twitch application details. They stay in this page's memory only. Register <code>http://localhost:4173/oauth-callback.html</code> as the OAuth redirect URL (Twitch accepts http only for localhost) and open this page at <code>http://localhost:4173/</code>.</p>

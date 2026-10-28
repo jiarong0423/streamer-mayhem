@@ -12,6 +12,8 @@ import {AutoFrame} from './auto_frame.mjs';
 import {dropColumn,dropTarget,DROP_FLOOR} from './drop_lanes.mjs';
 import {CatchBurst,loadSprites} from './catch_fx.mjs';
 import {DropWaves} from './drop_waves.mjs';
+import {FaceMosquito} from './face_mosquito.mjs';
+import {MotionProbe,grayFromRgba} from './motion_probe.mjs';
 import {createCameraGeometry,centerCrop,projectCameraPoint,projectCameraFrame,canvasPointToSource,visiblePointToCanvas} from './camera_geometry.mjs';
 import {makeOverlayState,OVERLAY_CLOSED_TYPE} from './overlay_protocol.mjs';
 import {SyntheticFrameSource} from './frame_source.mjs';
@@ -37,8 +39,57 @@ function feed(title,detail) {
 
 const waves=new DropWaves({seed:(Date.now()&0x7fffffff)||1});let waveSerial=0,roundEnding=false,banner=null;
 const autoDrops=document.querySelector('#auto-drops');
-autoDrops.addEventListener('change',()=>{waves.reset(performance.now());roundEnding=false;banner=null;feed(autoDrops.checked?'Auto drops on':'Auto drops off',autoDrops.checked?'Random gold items and bombs, rising difficulty':'Only chat starts drops');});
+$('#face-mosquito').addEventListener('click',()=>{startFaceMosquito();});
+$('#swat').addEventListener('click',()=>{swatFrames=3;});
+autoDrops.addEventListener('change',()=>{waves.reset(performance.now());roundEnding=false;banner=null;mosquitoPlanned=false;feed(autoDrops.checked?'Auto drops on':'Auto drops off',autoDrops.checked?'Random gold items and bombs, rising difficulty':'Only chat starts drops');});
 const catchFx=new CatchBurst();let fxSprites={},lastMarker=null;
+// The mosquito that goes for the face: flight in face_mosquito.mjs; a hand swat or face slap is seen as motion (motion_probe.mjs) where the mosquito is.
+const mosquito=new FaceMosquito({seed:(Date.now()&0x7fffffff)||1});
+const probe=new MotionProbe(),probeCanvas=document.createElement('canvas');probeCanvas.width=64;probeCanvas.height=36;
+const probeCtx=probeCanvas.getContext('2d',{willReadFrequently:true});
+let swatFrames=0,biteAt=-Infinity,mosquitoPlanned=false;
+// Face position and width in visible-window coordinates, or null when no face is tracked.
+function currentFace(){
+  const g=cameraGeometry;if(!g)return null;
+  const last=frameSource.lastFrame,point=cameraOn?(last?.torso??last?.nose??null):(last?.nose??null);
+  const p=point?projectCameraPoint({...point,visibility:1},g):null;if(!p)return null;
+  const span=1-g.crop.left-g.crop.right,w=cameraOn&&cameraTracker?.lastFace?Math.max(.04,cameraTracker.lastFace.fw/span):.12;
+  return {x:p.x,y:p.y,w};
+}
+function startFaceMosquito(){
+  if(mosquito.active||game.mode!=='PLAYING')return false;
+  const face=currentFace();if(!face){feed('No face yet','The mosquito needs a tracked face');return false;}
+  probe.reset();swatFrames=0;
+  if(!mosquito.start(performance.now(),face))return false;
+  game.setFaceMosquitoBusy(true);feed('Mosquito!','It is coming for your face: dodge it, swat it, or slap your face when it lands');return true;
+}
+// One step of the mosquito per frame: look for motion where it is (camera only), advance it, and book the result with the game.
+function stepMosquito(now,snapshot){
+  if(!mosquito.active)return;
+  if(!['PLAYING','TRACKING_LOST','RECOVERING'].includes(snapshot.mode)){mosquito.cancel(now);game.setFaceMosquitoBusy(false);return;}
+  const snap=mosquito.snapshot(now);let level=0;
+  if(swatFrames>0){swatFrames--;level=1;}                                   // the on-screen Swat button (no camera needed)
+  else if(cameraOn&&cameraGeometry){
+    const video=$('#camera-video');
+    if(video.readyState>=2){
+      probeCtx.drawImage(video,0,0,64,36);
+      const gray=grayFromRgba(probeCtx.getImageData(0,0,64,36).data,64,36);if(gray)probe.push(gray);
+      const c=canvasPointToSource(visiblePointToCanvas({x:snap.probe.x,y:snap.probe.y},cameraGeometry),cameraGeometry);
+      if(c)level=probe.level({x:c.x,y:c.y,r:snap.probe.r*(1-cameraGeometry.crop.left-cameraGeometry.crop.right)});
+    }
+  }
+  debugStats.level=level;debugStats.peak=Math.max(debugStats.peak*.97,level);
+  const result=mosquito.update(now,currentFace(),level);
+  if(result){
+    game.setFaceMosquitoBusy(false);
+    const booked=game.settleFaceMosquito(result);
+    if(booked){
+      lastEffect={outcome:booked.outcome,at:now,scoreDelta:booked.scoreDelta};
+      if(booked.outcome==='SWAT'&&cameraGeometry){const v=cameraGeometry.visible;catchFx.spawn(v.x+snap.x*v.width,v.y+snap.y*v.height,now,v.width/5);}
+      if(booked.outcome==='BITE')biteAt=now;
+    }
+  }
+}
 loadSprites().then(sprites=>{fxSprites=sprites;});
 const game=new MatrixGame({onEvent:event=>{
   if(event.type==='result'){
@@ -48,9 +99,10 @@ const game=new MatrixGame({onEvent:event=>{
       const at={x:v.x+(dropTarget(column)??.5)*v.width,y:v.y+DROP_FLOOR*v.height};catchFx.spawn(at.x,at.y,performance.now(),size*.5);
     }
     lastEffect={outcome:event.outcome,at:performance.now(),scoreDelta:event.scoreDelta??0};
-    const titles={HIT:'Ouch, hit!',DODGE:'Nice dodge',CATCH:'Caught it!',MISS:'Missed it',BOMB:'Boom! Bomb caught',AVOID:'Bomb dodged'};
+    const titles={HIT:'Ouch, hit!',DODGE:'Nice dodge',CATCH:'Caught it!',MISS:'Missed it',BOMB:'Boom! Bomb caught',AVOID:'Bomb dodged',SWAT:'Swatted it!',BITE:'Bitten!'};
     feed(titles[event.outcome]??'Undetermined',`${challengeNames[event.kind]??`Target cell ${event.cell}`} · ${event.outcome}`);
-  } else if(event.type==='lavaBurn')feed('Lava burn',`HP ${event.hpDelta} · stand to avoid the lava`);
+  } else if(event.type==='faceMosquito')startFaceMosquito();
+  else if(event.type==='lavaBurn')feed('Lava burn',`HP ${event.hpDelta} · stand to avoid the lava`);
   else if(event.type==='ringOut')feed('Character left the arena','Out of bounds');
 }});
 const stabilizer=new PointStabilizer();
@@ -171,17 +223,18 @@ function syncCameraGeometry(){
   cameraGeometry=buildCameraGeometry(w,h);
   stabilizer.reset();game.invalidateTracking();frameSource.reset();
 }
-const GRACE_MS=200;   // must stay below the game's 250 ms maxAge, otherwise an old position would be passed off as freshlet lastGood=null;
+// Grace for brief tracking gaps; it must stay below the game's 250 ms maxAge, otherwise an old position would be passed off as fresh.
+const GRACE_MS=200;let lastGood=null;
 const autoFrame=new AutoFrame();
 // Optional readout for real-camera tests: open the page with ?debug=1. It shows why a drop was UNKNOWN (low score, slow frames, no face).
-const debugStats={frames:0,since:performance.now(),fps:0,score:null,shownAt:0};
+const debugStats={frames:0,since:performance.now(),fps:0,score:null,shownAt:0,level:0,peak:0};
 const debugOn=new URLSearchParams(location.search).has('debug');
 function updateDebug(now,snapshot){
   if(!debugOn||now-debugStats.shownAt<250)return;
   const dt=(now-debugStats.since)/1000;if(dt>=1){debugStats.fps=debugStats.frames/dt;debugStats.frames=0;debugStats.since=now;}
   debugStats.shownAt=now;const v=cameraGeometry?.visible,x=v&&lastMarker?(lastMarker.x-v.x)/v.width:null,lane=dropColumn(x);
   const el=$('#camera-debug');el.hidden=false;
-  el.textContent=`score ${debugStats.score===null?'none':debugStats.score.toFixed(2)} · fps ${debugStats.fps.toFixed(1)} · x ${x===null?'—':Math.round(x*100)+'%'} · lane ${lane===null?'—':['L','C','R'][lane-1]} · ${snapshot.mode}`+(snapshot.lastResult?.kind==='DROP'?` · judged ${snapshot.lastResult.outcome} x ${snapshot.lastResult.sampledX===null?'—':Math.round(snapshot.lastResult.sampledX*100)+'%'} caught ${snapshot.lastResult.caught===null?'—':snapshot.lastResult.caught}`:'');
+  el.textContent=`score ${debugStats.score===null?'none':debugStats.score.toFixed(2)} · fps ${debugStats.fps.toFixed(1)} · x ${x===null?'—':Math.round(x*100)+'%'} · lane ${lane===null?'—':['L','C','R'][lane-1]} · ${snapshot.mode}`+(mosquito.active?` · motion ${debugStats.level.toFixed(2)} peak ${debugStats.peak.toFixed(2)}`:'')+(snapshot.lastResult?.kind==='DROP'?` · judged ${snapshot.lastResult.outcome} x ${snapshot.lastResult.sampledX===null?'—':Math.round(snapshot.lastResult.sampledX*100)+'%'} caught ${snapshot.lastResult.caught===null?'—':snapshot.lastResult.caught}`:'');
 }
 function pollCamera(){
   syncCameraGeometry();
@@ -276,12 +329,15 @@ function loopBody(){
   if(roundEnding&&snapshot.attacks.length===0){
     roundEnding=false;autoDrops.checked=false;banner={text:`ROUND OVER · SCORE ${snapshot.score}`,at:now};feed('Round over',`Score ${snapshot.score}`);
   }
-  if(autoDrops.checked&&!roundEnding&&snapshot.mode==='PLAYING'&&game.connection==='ONLINE'){
+  // Once per round, about two thirds in, the mosquito comes for the face; gold items and bombs wait while it is around.
+  if(autoDrops.checked&&!roundEnding&&!mosquitoPlanned&&waves.difficulty(now)>=.66&&snapshot.mode==='PLAYING'){mosquitoPlanned=true;startFaceMosquito();}
+  stepMosquito(now,snapshot);
+  if(autoDrops.checked&&!roundEnding&&!mosquito.active&&snapshot.mode==='PLAYING'&&game.connection==='ONLINE'){
     const next=waves.update(now,snapshot.attacks.length);
     if(next){const id=`wave-${++waveSerial}`;game.receiveWaveDrop({notificationId:id,messageId:id,actorId:id,receivedAt:performance.now()},next);snapshot=game.tick();}
   }
   const last=frameSource.lastFrame,anchor=cameraOn?(last?.torso??last?.nose??null):(last?.nose??null);
-  const drawn=drawArena(ctx,snapshot,anchor,{now,lastEffect,banner,tracking:frameSource.running&&Boolean(anchor),geometry:cameraGeometry,
+  const drawn=drawArena(ctx,snapshot,anchor,{now,lastEffect,banner,mosquito:mosquito.snapshot(now),biteAt,tracking:frameSource.running&&Boolean(anchor),geometry:cameraGeometry,
     backdrop:cameraOn?drawCameraBackdrop:null,marker:cameraOn});lastMarker=drawn?.position??null;
   catchFx.draw(ctx,now,fxSprites,cameraGeometry?.visible??null);updateDebug(now,snapshot);updateScreen(snapshot);
   if(now-lastOverlayUpdate>=100){lastOverlayUpdate=now;publishOverlay(snapshot);}
@@ -474,7 +530,7 @@ $('#auth-mock-toggle').addEventListener('click',()=>{
 });
 window.addEventListener('message',event=>{popupController?.handleMessage(event);providerActivation?.handleMessage(event);});
 $('#reset').addEventListener('click',()=>{
-  game.reset();frameSource.reset();waves.reset(performance.now());roundEnding=false;banner=null;player.x=.5;player.y=.5;tracking=true;lastEffect=null;game.start();
+  game.reset();frameSource.reset();waves.reset(performance.now());roundEnding=false;banner=null;mosquito.cancel(performance.now());game.setFaceMosquitoBusy(false);mosquitoPlanned=false;player.x=.5;player.y=.5;tracking=true;lastEffect=null;game.start();
   if(ircChat)game.setConnection(ircChat.status==='ONLINE');else if(providerActivation)game.setConnection(providerActivation.provider.transport.status==='ONLINE');else if(mockMode||chatMode)game.setConnection((chatMode?chatTransport:transport).status==='ONLINE');else adapter.ingest(syntheticWelcome());
   poseControls.spread=.1;poseControls.hip=.5;poseControls.leftWrist={x:.25,y:.55};poseControls.rightWrist={x:.75,y:.55};
   $('#elbow-spread').value='10';$('#elbow-value').textContent='10%';for(const id of ['elbow-known','wrist-known','hip-known'])$(`#${id}`).checked=true;

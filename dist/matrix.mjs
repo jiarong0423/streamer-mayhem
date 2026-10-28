@@ -34,6 +34,11 @@ export function parseDropCommand(text) {
   const match = /^!drop\s+([1-3])$/i.exec(cleanCommand(text));
   return match ? Number(match[1]) : null;
 }
+// `!mosquito` sends a mosquito after the streamer's face (the flight itself lives in face_mosquito.mjs).
+export function parseMosquitoCommand(text) {
+  if (typeof text !== 'string' || text.length > 100) return false;
+  return /^!mosquito$/i.test(cleanCommand(text));
+}
 // `!bomb 1|2|3` drops a bomb on the same targets: the streamer should keep the catcher away from it.
 export function parseBombCommand(text) {
   if (typeof text !== 'string' || text.length > 100) return null;
@@ -46,13 +51,13 @@ export class MatrixGame {
   constructor({ clock = () => performance.now(), onEvent = () => {}, options = {} } = {}) {
     this.clock = clock;
     this.onEvent = onEvent;
-    this.config = { maxAge: 250, confidence: .55, warning: 500, crossWarning: 1500, dropFall: 2500, dropScore: 25, bombPenalty: 25, avoidScore: 10, recovery: 1000,
+    this.config = { maxAge: 250, confidence: .55, warning: 500, crossWarning: 1500, dropFall: 2500, dropScore: 25, bombPenalty: 25, avoidScore: 10, faceSwatScore: 50, faceDodgeScore: 25, faceBiteDamage: 5, faceBitePenalty: 25, faceMosquitoCooldown: 10000, recovery: 1000,
       actorCooldown: 3000, globalCooldown: 400, maxAttacks: 8, ringTime: 1000,
       ringDamage: 10, damage: 15, dodgeScore: 25, freezeDamage:12, freezeScore:100, freezeCooldown:8000,
       mosquitoDamage:5,mosquitoScore:50,lavaDamage:5,lavaScore:75,actionCooldown:8000,
       dedupeTtl: 600000, dedupeLimit: 2000, maxResults: 200,
       ring: { left: .04, right: .96, top: .04, bottom: .96 }, ...options };
-    for (const key of ['maxAge','warning','crossWarning','dropFall','dropScore','bombPenalty','avoidScore','recovery','actorCooldown','globalCooldown','ringTime','dedupeTtl']) {
+    for (const key of ['maxAge','warning','crossWarning','dropFall','dropScore','bombPenalty','avoidScore','faceSwatScore','faceDodgeScore','faceBiteDamage','faceBitePenalty','faceMosquitoCooldown','recovery','actorCooldown','globalCooldown','ringTime','dedupeTtl']) {
       if (!finite(this.config[key]) || this.config[key] < 0) throw new RangeError(`Invalid ${key}`);
     }
     for (const key of ['maxAttacks','dedupeLimit','maxResults']) {
@@ -76,6 +81,7 @@ export class MatrixGame {
     this.outSince = null; this.outPenalized = false; this.recoveryUntil = null;
     // Resetting a round must not make an already-delivered chat message new again.
     this.notifications ??= new Map(); this.messages ??= new Map(); this.actors = new Map();
+    this.faceMosquitoBusy = false; this.lastFaceMosquito = -Infinity; this.faceMosquitoSerial = this.faceMosquitoSerial ?? 0;
     this.lastGlobal = -Infinity; this.lastFreeze=-Infinity;this.lastActions=new Map(); this.pausedFrom = null;this.freeze.reset();this.actionGame.reset();
   }
 
@@ -147,6 +153,7 @@ export class MatrixGame {
   receiveChat(event) {
     const drop = parseDropCommand(event?.text);
     if (drop !== null) return this.#receiveAttack(event, {cell:drop + 3, kind:'DROP', cells:dropCells(drop), warning:this.config.dropFall});
+    if (parseMosquitoCommand(event?.text)) return this.#receiveAttack(event, {kind:'FACE_MOSQUITO'});
     const bomb = parseBombCommand(event?.text);
     if (bomb !== null) return this.#receiveAttack(event, {cell:bomb + 3, kind:'DROP', variant:'BOMB', cells:dropCells(bomb), warning:this.config.dropFall});
     const cell = parseMatrixCommand(event?.text);
@@ -191,12 +198,18 @@ export class MatrixGame {
     if(isFreeze&&this.gameTime-this.lastFreeze<this.config.freezeCooldown)return {accepted:false,reason:'FREEZE_COOLDOWN'};
     if(isAction&&!(raising?this.actionGame.canRaise(this.latestFrame,this.wall):this.actionGame.canStart(target.kind,this.latestFrame,this.wall)))return {accepted:false,reason:'POSE_UNKNOWN'};
     if(isAction&&!raising&&this.gameTime-(this.lastActions.get(target.kind)??-Infinity)<this.config.actionCooldown)return {accepted:false,reason:'GAME_COOLDOWN'};
+    if (target.kind === 'FACE_MOSQUITO' && this.faceMosquitoBusy) return { accepted:false, reason:'MODE_BUSY' };
+    if (target.kind === 'FACE_MOSQUITO' && this.gameTime - this.lastFaceMosquito < this.config.faceMosquitoCooldown) return { accepted:false, reason:'GAME_COOLDOWN' };
     if (this.attacks.length >= this.config.maxAttacks) return { accepted:false, reason:'QUEUE_FULL' };
     if (this.gameTime - (this.actors.get(event.actorId) ?? -Infinity) < this.config.actorCooldown) return { accepted:false, reason:'ACTOR_COOLDOWN' };
     if (this.gameTime - this.lastGlobal < this.config.globalCooldown) return { accepted:false, reason:'GLOBAL_COOLDOWN' };
     this.actors.set(event.actorId,this.gameTime); this.lastGlobal = this.gameTime;
     // Bound actor state independently from untrusted chat volume.
     if (this.actors.size > this.config.dedupeLimit) this.actors.delete(this.actors.keys().next().value);
+    if(target.kind==='FACE_MOSQUITO'){
+      this.lastFaceMosquito=this.gameTime;
+      const detail={eventId:event.messageId,kind:'FACE_MOSQUITO'};this.emit('faceMosquito',detail);return {accepted:true,...detail};
+    }
     if(isFreeze){
       this.freeze.start({eventId:event.messageId,now:this.wall,frame:this.latestFrame});
       this.lastFreeze=this.gameTime;this.outSince=null;this.outPenalized=false;
@@ -283,6 +296,22 @@ export class MatrixGame {
     if(this.hp===0&&this.mode!=='ROUND_END'){
       this.mode='ROUND_END';this.emit('status',{status:'ROUND_END'});this.cancelPending('ROUND_END',this.wall);
     }
+  }
+
+  // The face mosquito flies in the page (face_mosquito.mjs); the page tells the core when it is on screen and what came of it.
+  setFaceMosquitoBusy(busy) { this.faceMosquitoBusy = Boolean(busy); }
+  // SWAT +faceSwatScore, DODGE +faceDodgeScore (it gave up), BITE -faceBiteDamage hp and -faceBitePenalty points, UNKNOWN (face lost / cancelled) nothing.
+  settleFaceMosquito({outcome,reason,approaches=1}={}) {
+    if (!['SWAT','DODGE','BITE','UNKNOWN'].includes(outcome) || (this.mode !== 'PLAYING' && this.mode !== 'RECOVERING' && this.mode !== 'TRACKING_LOST')) return null;
+    const hpBefore = this.hp, scoreBefore = this.score;
+    if (outcome === 'SWAT') this.score += this.config.faceSwatScore;
+    if (outcome === 'DODGE') this.score += this.config.faceDodgeScore;
+    if (outcome === 'BITE') { this.hp = Math.max(0, this.hp - this.config.faceBiteDamage); this.score = Math.max(0, this.score - this.config.faceBitePenalty); }
+    const result = { eventId:`face-mosquito-${++this.faceMosquitoSerial}`, cell:5, kind:'FACE_MOSQUITO', outcome, reason:String(reason ?? ''), approaches,
+      sampledFrameId:null, sampledAt:this.wall, hpDelta:this.hp-hpBefore, scoreDelta:this.score-scoreBefore };
+    this.recordResult(result);
+    if (this.hp === 0) { this.mode='ROUND_END'; this.emit('status',{status:'ROUND_END'}); }
+    return result;
   }
 
   cancelPending(reason, atWall) {
