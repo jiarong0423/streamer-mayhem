@@ -35,7 +35,7 @@ const $ = selector => document.querySelector(selector);
 const canvas=$('#arena'),ctx=canvas.getContext('2d');
 const player={x:.5,y:.5};
 const poseControls={spread:.1,hip:.5,leftWrist:{x:.25,y:.55},rightWrist:{x:.75,y:.55}};
-const challengeNames={DROP:'Catch the drop',CROSS:'Cross Inferno',FREEZE:'Freeze',MOSQUITO:'Mosquito',LAVA:'Lava'};
+const challengeNames={DROP:'Catch the drop',CROSS:'Cross Inferno',FREEZE:'Freeze',LAVA:'Lava'};
 let cameraGeometry=createCameraGeometry({canvasWidth:canvas.width,canvasHeight:canvas.height,viewport:{x:0,y:0,width:canvas.width,height:canvas.height},sourceWidth:1280,sourceHeight:720});
 let eventId=0,tracking=true,lastEffect=null,animationId=0,mockMode=false,chatMode=false,providerActivation=null,configuredProvider=null,ircChat=null,cameraTracker=null,cameraOn=false,cameraMirror=true,cameraKindLabel='CAMERA FACE TRACKING',savedGeometry=null;
 let lastOverlayUpdate=0,roundLeftNow;
@@ -117,7 +117,7 @@ const game=new MatrixGame({onEvent:event=>{
     feed(titles[event.outcome]??'Undetermined',`${challengeNames[event.kind]??`Target cell ${event.cell}`} · ${event.outcome}`);
   } else if(event.type==='lavaBurn')feed('Lava burn',`HP ${event.hpDelta} · stand to avoid the lava`);
   else if(event.type==='ringOut')feed('Character left the arena','Out of bounds');
-},options:{landJitter:.12,avoidScore:0}});   // theme: dodging a pie scores nothing (a dodge is just not being hit)
+},options:{landJitter:.12,avoidScore:0,chatThrow:false}});   // theme: dodging a pie scores nothing (a dodge is just not being hit)
 const stabilizer=new PointStabilizer();
 const frameSource=new SyntheticFrameSource({game,maxAge:game.config.maxAge,project:frame=>{
   const out=cameraGeometry?projectCameraFrame(frame,cameraGeometry):{...frame,nose:null,leftShoulder:null,rightShoulder:null};
@@ -472,7 +472,6 @@ function move(dx,dy){
 }
 const movement={left:[-1,0],right:[1,0],up:[0,-1],down:[0,1]};
 document.querySelectorAll('[data-move]').forEach(button=>button.addEventListener('click',()=>move(...movement[button.dataset.move])));
-document.querySelectorAll('[data-throw]').forEach(button=>button.addEventListener('click',()=>send(`!throw ${button.dataset.throw}`)));
 $('#synthetic-cross').addEventListener('click',()=>{
   if(mockMode||chatMode||providerActivation)return;
   const serial=++eventId;
@@ -484,7 +483,7 @@ $('#synthetic-cross').addEventListener('click',()=>{
 function sendChallenge(kind,level=.45){
   if(mockMode||chatMode||providerActivation||popupController?.pending){$('#command-feedback').textContent='Stop the local chat auth test before starting a challenge';return;}
   const serial=++eventId,event={notificationId:`notification-${serial}`,messageId:`message-${serial}`,actorId:`synthetic-${kind}-viewer`,receivedAt:performance.now()};
-  const result=kind==='FREEZE'?game.receiveSyntheticFreeze(event):kind==='MOSQUITO'?game.receiveSyntheticMosquito(event):game.receiveSyntheticLava(event,{level});
+  const result=kind==='FREEZE'?game.receiveSyntheticFreeze(event):game.receiveSyntheticLava(event,{level});
   $('#command-feedback').textContent=result.accepted?`${challengeNames[kind]}${result.raised?'Lava level raised':'Started'}`:reasons[result.reason]??'Event could not be handled';
   if(result.accepted)feed(challengeNames[kind],result.raised?'Raise target level':'Uses synthetic joint controls');
 }

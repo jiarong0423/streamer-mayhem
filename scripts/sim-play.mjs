@@ -15,7 +15,7 @@ const THEME = { maxActive: 3, fallMin: 2200, fallMax: 3800, fallFloor: 1500, spe
 
 function playRound(seed, { speed, react, staggered, crops = 'none' }) {
   const clock = { now: 0 }, results = [];
-  const game = new MatrixGame({ clock: () => clock.now, onEvent: (e) => { if (e.type === 'result') results.push(e); }, options: staggered ? { landJitter: .12 } : {} });
+  const game = new MatrixGame({ clock: () => clock.now, onEvent: (e) => { if (e.type === 'result') results.push(e); }, options: staggered ? { landJitter: .12, avoidScore: 0 } : {} });
   game.setConnection(true); game.start();
   let serial = 0, frame = 0, x = .5;
   const waves = new DropWaves({ seed, ...(staggered ? { ...THEME, landXFor: (c, t) => dropLandX(c, `wave-${serial + 1}-${t}`, .12) } : {}) });

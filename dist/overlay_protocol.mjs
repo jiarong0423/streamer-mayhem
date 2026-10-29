@@ -50,12 +50,11 @@ function renderFreeze(value,playing){
 }
 function renderAction(value,playing){
   if(value===undefined||value===null||value.active===false)return null;
-  if(value.active!==true||!['MOSQUITO','LAVA'].includes(value.kind)||!['ACTIVE','UNKNOWN','PAUSED','RECOVERING'].includes(value.status))return error();
-  const names=value.kind==='MOSQUITO'?['leftWrist','rightWrist']:['leftHip'];
-  const pose=renderPose(value.pose,names,value.kind==='MOSQUITO'),visible=playing&&value.status==='ACTIVE';
-  if(value.status==='ACTIVE'&&(!pose||(value.kind==='MOSQUITO'&&!value.mosquito)))return error();
+  if(value.active!==true||value.kind!=='LAVA'||!['ACTIVE','UNKNOWN','PAUSED','RECOVERING'].includes(value.status))return error();
+  const pose=renderPose(value.pose,['leftHip'],false),visible=playing&&value.status==='ACTIVE';
+  if(value.status==='ACTIVE'&&!pose)return error();
   if(!Number.isSafeInteger(value.burns)||value.burns<0||value.burns>60)return error();
-  return {active:true,kind:value.kind,status:value.status,remainingMs:number(value.remainingMs,0,10000),recoveryRemaining:number(value.recoveryRemaining,0,60000),pose:visible?pose:null,mosquito:visible&&value.kind==='MOSQUITO'?renderPoint(value.mosquito,false):null,level:number(value.level,0,.8),targetLevel:number(value.targetLevel,0,.8),burns:value.burns};
+  return {active:true,kind:value.kind,status:value.status,remainingMs:number(value.remainingMs,0,10000),recoveryRemaining:number(value.recoveryRemaining,0,60000),pose:visible?pose:null,level:number(value.level,0,.8),targetLevel:number(value.targetLevel,0,.8),burns:value.burns};
 }
 // ---- v4 display extras: only game state (names, short fixed phrases, numbers, enums); never pixels, ids or free-form colours ----
 export const TICKER_TONES=Object.freeze(['SCORE3','SCORE2','MISS','SPLAT','DODGE','CHEER','REFUSED']);

@@ -153,9 +153,6 @@ export function drawChallengeOverlay(ctx,rect,snapshot,fontSize=20){
       const height=rect.height*action.level;ctx.fillStyle='rgba(255,74,22,.48)';ctx.fillRect(rect.x,rect.y+rect.height-height,rect.width,height);
       ctx.strokeStyle='#ffb14e';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(rect.x,rect.y+rect.height-height);ctx.lineTo(rect.x+rect.width,rect.y+rect.height-height);ctx.stroke();
       if(playing&&action.status==='ACTIVE')dot(action.pose?.leftHip,'#baf477',14);
-    }else if(playing&&action.status==='ACTIVE'){
-      const m=action.mosquito;if(m){dot(m,'#ffed6c',22);dot({x:m.x-.012,y:m.y-.018},'#fff',12);dot({x:m.x+.012,y:m.y-.018},'#fff',12);}
-      dot(action.pose?.leftWrist,'#8fe8ff',16);dot(action.pose?.rightWrist,'#ffa5e1',16);line(action.pose?.leftWrist,action.pose?.rightWrist,'rgba(255,255,255,.3)',1);
     }
     label(`${action.kind} · ${action.status==='ACTIVE'?`${(action.remainingMs/1000).toFixed(1)}s`:action.status==='RECOVERING'?`READY ${(action.recoveryRemaining/1000).toFixed(1)}`:action.status}`,action.kind==='LAVA'?'#ffbd80':'#f9ef78');
   }

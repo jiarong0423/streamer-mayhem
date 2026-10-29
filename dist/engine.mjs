@@ -9,7 +9,7 @@ export function parseCommand(text) {
   if (typeof text !== 'string' || text.length > 100) return null;
   const m = /^!throw\s+([1-9])$/i.exec(text.trim());
   if (m) return { type: 'throw', cell: Number(m[1]) };
-  const type = /^!(freeze|lava|mosquito|cross)$/i.exec(text.trim())?.[1]?.toLowerCase();
+  const type = /^!(freeze|lava|cross)$/i.exec(text.trim())?.[1]?.toLowerCase();
   return type ? { type } : null;
 }
 export function demoPose(x = .5, y = .35, narrow = false, hands = null) {
@@ -35,7 +35,7 @@ export class ExperimentalGame {
   }
   reset() {
     this.time = 0; this.hp = 100; this.score = 0; this.dodged = 0; this.hits = 0;
-    this.attacks = []; this.bugs = []; this.freeze = null; this.lava = 0;
+    this.attacks = []; this.freeze = null; this.lava = 0;
     this.lavaBaseline = .75; this.calibrated = false; this.lavaTick = 0;
     this.charge = 0; this.outSince = null; this.lastRing = -10; this.lastDamage = -10;
     this.pose = []; this.poseAt = -10; this.previousSample = null; this.samples = 0;
@@ -63,21 +63,8 @@ export class ExperimentalGame {
     if (this.running && dt > 0 && dt <= .25) {
       for (let i = 0; i < wrists.length; i++) {
         if (!prev.wrists[i]) continue;
-        if (distance(wrists[i],prev.wrists[i])/dt > 450) {
-          this.bugs = this.bugs.filter(b => {
-            if (distance(b,wrists[i]) > 65) return true;
-            this.score += 50; this.emit('slap','MOSQUITO DOWN', { x:b.x, y:b.y }); return false;
-          });
-        }
       }
       const clapping = palms.length === 2 && distance(palms[0],palms[1]) < 100;
-      if (clapping && !this.wasClapping && prev.palms.length === 2 && distance(prev.palms[0],prev.palms[1]) > 130) {
-        const mid = { x:(palms[0].x+palms[1].x)/2, y:(palms[0].y+palms[1].y)/2 };
-        this.bugs = this.bugs.filter(b => {
-          if (distance(b,mid)>85) return true;
-          this.score+=75; this.emit('slap','CLAP COMBO', {x:b.x,y:b.y}); return false;
-        });
-      }
       this.wasClapping = clapping;
     } else this.wasClapping = false;
     this.previousSample = { timestamp, wrists, palms };
@@ -94,11 +81,11 @@ export class ExperimentalGame {
     const {type,cell} = command;
     // Matrix attacks must use MatrixGame's event IDs and tracking contract.
     if (type === 'throw') return false;
-    if (!['throw','cross','freeze','mosquito','lava'].includes(type)) return false;
+    if (!['throw','cross','freeze','lava'].includes(type)) return false;
     if (type === 'throw' && (!Number.isInteger(cell) || cell<1 || cell>9)) return false;
     if (!trusted && (this.time-(this.users.get(user)??-10)<3 || this.time-this.lastCommand<.4)) return false;
     if (type==='throw' && this.attacks.length>=8) return false;
-    if (type!=='throw' && this.time-(this.modeCooldown.get(type)??-30)<(type==='mosquito'?2:8)) return false;
+    if (type!=='throw' && this.time-(this.modeCooldown.get(type)??-30)<8) return false;
     if (type==='freeze' && this.freeze) return false;
     if (type==='lava' && !this.calibrated) { this.emit('info','CALIBRATE STANDING HEIGHT FIRST'); return false; }
     this.users.set(user,this.time); this.lastCommand=this.time;
@@ -106,7 +93,6 @@ export class ExperimentalGame {
     if (type==='throw') this.attacks.push({cells:[cell], at:this.time+.5, until:this.time+.95, resolved:false});
     if (type==='cross') this.attacks.push({cells:CROSS, at:this.time+1.5, until:this.time+2.1, resolved:false});
     if (type==='freeze') this.freeze={start:this.time+1.5,end:this.time+4,center:.5,width:.3,anchor:null};
-    if (type==='mosquito') for(let i=0;i<Math.min(3,8-this.bugs.length);i++) this.bugs.push({x:.15+this.random()*.7,y:.15+this.random()*.6,vx:(this.random()-.5)*.4,vy:(this.random()-.5)*.4,until:this.time+15});
     if (type==='lava') this.lava=clamp(this.lava+.12,0,.55);
     if (type!=='throw') this.modeCooldown.set(type,this.time);
     this.emit('attack',type==='throw'?`INCOMING · CELL ${cell}`:type.toUpperCase(),{command,user}); return true;
@@ -152,14 +138,6 @@ export class ExperimentalGame {
         if(this.lavaTick>=1) {this.damage(5,'LAVA BURN');this.lavaTick%=1;}
       } else this.lavaTick=0;
     }
-    for(const b of this.bugs) {
-      b.vx=clamp(b.vx+(this.random()-.5)*.4*Math.sqrt(dt),-.25,.25);
-      b.vy=clamp(b.vy+(this.random()-.5)*.4*Math.sqrt(dt),-.35,.35);
-      b.x+=b.vx*dt; b.y+=b.vy*dt;
-      if(b.x<.04||b.x>.96) {b.vx*=-1;b.x=clamp(b.x,.04,.96);}
-      if(b.y<.06||b.y>.94) {b.vy*=-1;b.y=clamp(b.y,.06,.94);}
-    }
-    this.bugs=this.bugs.filter(b=>b.until>this.time);
   }
 }
 

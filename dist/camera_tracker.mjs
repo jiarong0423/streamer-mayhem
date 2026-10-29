@@ -21,7 +21,7 @@ export function landmarksToPoints(landmarks) {
 }
 
 // Face detection result -> game points. The face box centre is the steady judging anchor (`torso` slot); the nose tip is the nose.
-// Face mode has no shoulders, wrists or hips, so Freeze, Mosquito and Lava report POSE_UNKNOWN in this mode.
+// Face mode has no shoulders, wrists or hips, so Freeze and Lava report POSE_UNKNOWN in this mode.
 export function faceToPoints(detection,width,height) {
   const box=detection?.boundingBox;
   if(!box || !(width>0) || !(height>0) || ![box.originX,box.originY,box.width,box.height].every(finite))return null;

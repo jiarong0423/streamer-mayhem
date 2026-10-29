@@ -1,22 +1,27 @@
 # StreamerMayhem
 
-A Twitch interactive game for a seated streamer: chat drops gold items and bombs, and the streamer catches or dodges them just by leaning their head, tracked by a face model that runs in the browser tab (keyboard or mouse is the fallback). Viewers type commands; the streamer sees the items fall on a transparent OBS overlay with score and health. Built for the Codex x TwitchCon Hackathon.
+A Twitch interactive game for a seated streamer, themed as basketball: chat shoots balls and throws pies, and the streamer moves a hoop under their face by leaning their head to catch the balls and dodge the pies. The head is tracked by a face model that runs in the browser tab (keyboard or mouse is the fallback). Viewers type commands; the streamer sees the shots on the game page, and a subset of it on a transparent OBS Browser Source overlay. Built for the Codex x TwitchCon Hackathon.
 
 **Who it is for:** a streamer sitting at a computer with the face camera as the main picture (Just Chatting style), streaming with OBS in landscape. Outdoor and phone-only streaming is out of scope: those apps have no place to put a browser-source overlay. A phone can serve as the camera (see below).
 
 ## What it does
 
-- **Catch mode (the main game).** Viewers send `!drop 1`, `!drop 2` or `!drop 3`: a gold item falls for 2.5 s to one of three targets (35%, 50%, 65% of the picture width). A catcher about one face width wide follows the streamer's head along the bottom; if it covers the item when it lands, +25. `!bomb 1-3` drops a bomb: catching it costs 25 points, dodging it earns 10. **Auto drops** (a checkbox) adds irregular waves of items and bombs that get denser and faster over a 75 s round, then shows a score banner. Only the left/right position counts; if the face is not tracked the result is UNKNOWN, never a guess.
-- **Face mosquito (`!mosquito`).** A mosquito flies an irregular S-shaped path toward the streamer's face. Swat it with a hand in flight, or, if it lands, slap your own face within 2 s; tilting away makes it miss (+25). A bite costs 5 HP and 25 points. Hand and slap are detected from camera motion around the mosquito (no hand model), and the first mosquito of a round is a no-penalty practice. Auto drops send one around two thirds into the 75 s round; a viewer `!mosquito` has a 20 s cooldown.
-- **Dodge attacks.** Viewers send `!throw 1` to `!throw 9` to target one cell of a 3x3 grid over the camera view (the grid is only drawn for the targeted cells).
-- **Four more modes** sharing the same rules core, triggered by chat:
-  - Dodge (`!throw 1-9`): one cell is hit after a warning.
-  - Cross Inferno: cells 2/4/5/6/8 are hit after a 1.5 s warning; corners 1/3/7/9 are safe.
-  - Freeze (`!freeze`): keep five joints inside a narrow box through a yellow then red phase; a continuous violation costs HP.
-  - Lava (`!lava`): rising lava over 8 s; stand or crouch to stay above the surface.
-- **Fair by construction.** One result per event, message-ID dedupe, per-user cooldowns, bounded queue, and tracking loss yields UNKNOWN (no damage, no score) instead of a wrong hit.
-- **OBS overlay.** A transparent Browser Source page receives game state over a local relay and draws the warnings on top of the streamer's camera.
-- **Twitch connection.** OAuth implicit grant plus an EventSub WebSocket `channel.chat.message` subscription, with reconnect, keepalive watchdog and revocation handling. The anonymous IRC path has its own watchdog (join timeout, 6 minute idle limit, endless reconnect). The token stays in page memory and is never written to disk or logs. A second, login-free path reads a public channel's chat anonymously over Twitch's IRC WebSocket (`dist/irc_anonymous.mjs`, read-only, no account or Twitch application); both paths feed the same game rules.
+- **Basketball (the main game).** Viewers send `!drop 1`, `!drop 2` or `!drop 3` to send a ball. The middle lane (`!drop 2`) is a two-pointer (20 points) dropped from above; the left and right lanes (`!drop 1`, `!drop 3`) are three-pointers (30 points) thrown in an arc from that side. A hoop about one face width wide follows the streamer's head along the bottom; if it covers the ball when it lands, the streamer scores (a combo multiplier of x1.5 from a streak of 5 and x2 from 10 applies). `!pie 1-3` throws a pie (`!bomb 1-3` still works as an alias): the lane flashes a warning column first and the pie appears 72% of the way to the floor; a pie that lands on the hoop costs the streamer 25 points (and gives chat 25), and dodging a pie scores nothing. **Auto drops** (a checkbox; **Start playing** turns it on after the countdown) sends irregular waves of balls and pies over a 75 s round, then shows a score banner with a grade: S from 1400 points, A from 900, B from 700. Auto-drop falls are 2.2 to 3.8 s at the start of a round, made faster by a random factor of 1.1 to 1.5 and shorter as the round goes on, but never faster than 1.5 s per ball. Only the left/right position counts; if the face is not tracked the result is UNKNOWN, never a guess.
+- **Chat on screen.** A top marquee strip scrolls the latest results with the viewer's name (for example a three-pointer, a pie splat, a dodge); a streamer-versus-chat bar sits under it. When a chat message carries Bits, the viewer's name is shown with a star on the strip and a star ball carrying that name is sent; catching it triggers a thank-you. A star next to a name also marks subscribers. Reading names aloud with the browser voice is off by default. The announcer voice clips are generated locally with Kokoro (see `dist/voice/NOTICE.md`).
+- The face-mosquito experiment is not part of this repository: no mosquito code or command remains.
+- **Extra legacy modes** (kept in the simulator and rules core, not the basketball theme): the 3x3 `!throw 1-9` mode is still in the rules core and its tests, but the game page turns it off for chat (it would bypass the ball and pie scoring); Cross Inferno (cells 2/4/5/6/8 are hit after a 1.5 s warning, corners 1/3/7/9 are safe); Freeze (`!freeze`): keep five joints inside a narrow box through a yellow then red phase; Lava (`!lava`): rising lava over 8 s.
+- **Fair by construction (best effort).** One result per event, message-ID dedupe for commands, per-user cooldowns, bounded queue, and tracking loss yields UNKNOWN (no damage, no score) instead of a wrong hit. This is best-effort fairness, not a security guarantee.
+- **OBS overlay.** A transparent OBS Browser Source page (it is not a Twitch Extension) receives game state over a local relay and draws a subset of the game page on top of the streamer's camera. It does not yet show everything the game page shows.
+- **Twitch connection.** Two paths feed the same game rules. (1) A login-free path reads a public channel's chat anonymously over Twitch's IRC WebSocket (`dist/irc_anonymous.mjs`, read-only, no account or Twitch application, never sends messages). It was observed to work, but anonymous IRC reading is not documented by Twitch, so it is not claimed as officially supported; Twitch's preferred route for reading chat is EventSub. Use it only on your own channel or one whose owner agreed. It has a join timeout, a 6 minute idle limit and endless reconnect. (2) OAuth implicit grant plus an EventSub WebSocket `channel.chat.message` subscription, with reconnect, keepalive watchdog and revocation handling. The token stays in page memory, is never written to disk or logs, and expires (re-authorize then). Chat and names are handled in memory only. Not affiliated with or endorsed by Twitch.
+
+## No webcam?
+
+**Start playing** needs a camera: without one it returns to its idle state with a camera message and does not start a round. To try the game with keyboard and mouse (read from `dist/index.html` and `dist/app.mjs`; not run in a browser by the author of this text):
+
+1. Open **More options**, then **More options (practice mode, OAuth, test tools)**, then **Practice without chat (audience simulator)** (three collapsed sections).
+2. Tick **Auto drops** to run a round of balls and pies, or type `!drop 2` or `!pie 1` in the command box and press the arrow button.
+3. Move the hoop by clicking or dragging in the arena, or click the arena and use the arrow keys (the arrow buttons under the arena also work).
+4. To try the supporter features, type `Cheer100 !drop 2` (a simulated cheer of 100 Bits with a drop).
 
 ## Requirements
 
@@ -28,29 +33,31 @@ Node.js with the built-in `node:test` runner (verified with v26.12.1). No packag
 node scripts/serve-local.mjs
 ```
 
-Open `http://127.0.0.1:4173/`. Without any Twitch setup the page runs in clearly labeled `SIMULATED` mode: click the numbered buttons or type `!throw 3` in the audience simulator.
+Open `http://127.0.0.1:4173/`. Without any Twitch setup the page runs in clearly labeled `SIMULATED` mode: use the audience simulator under **More options** (see "No webcam?" above) and type `!drop 2` or `!pie 1`.
 
 To connect to real Twitch, follow [TWITCH_LIVE_SETUP.md](TWITCH_LIVE_SETUP.md). Quickest path: in **Connect to Twitch chat without login**, type a channel name and press Connect.
 
 ## Test
 
 ```sh
-node --test --test-reporter=tap tests/*.test.mjs
+node --test --test-force-exit tests/*.test.mjs
 ```
 
-Tests (246 at the time of writing) use fake clocks, synthetic event IDs and generated landmarks. Some integration tests bind to `127.0.0.1`; run them where loopback listening is permitted.
+The suite reports 382 tests; on 30 Oct all 382 passed in a run where loopback listening was permitted (inside a sandbox the 2 `serve_local` tests fail with `EPERM` because they cannot bind `127.0.0.1`). Tests use fake clocks, synthetic event IDs and generated landmarks.
 
 ## Honest scope
 
-- Camera tracking: press **Start playing** (or **Turn on camera tracking** under More options). The page runs Google's MediaPipe (Apache-2.0, bundled under `dist/vendor/mediapipe/`, see its NOTICE.md and LICENSE-Apache-2.0.txt) on your camera, locally. The default Face Landmarker follows your head; the game frames you automatically (about six face widths across, face a little above the middle), mirrors the picture, and tracking loss never scores or hurts (the result is UNKNOWN). Body mode (pose) is for the older Freeze and Lava modes. Verified: models load under the page's security policy; mapping and framing are unit tested; the camera path ran on an Android phone (face tracking about 22 fps, three of three drops caught in a catch test). Hand and face-slap detection for the mosquito is simulated-motion tested; real-person accuracy is still the streamer's own check (the `?debug=1` page has a Swat sensor bar). Keep the camera fixed and sit alone in view. The model library tries to send a usage-log request to Google; the page's Content-Security-Policy blocks it, so nothing leaves the machine. Without the camera, input is synthetic (keyboard or mouse).
+- Camera tracking: press **Start playing** (or **Turn on camera tracking** under More options). The page runs Google's MediaPipe (Apache-2.0, bundled under `dist/vendor/mediapipe/`, see its NOTICE.md and LICENSE-Apache-2.0.txt) on your camera, locally. The default Face Landmarker follows your head; the game frames you automatically (about six face widths across, face a little above the middle), mirrors the picture, and tracking loss never scores or hurts (the result is UNKNOWN). Body mode (pose) is for the older Freeze and Lava modes. Verified: models load under the page's security policy; mapping and framing are unit tested; the camera path ran on an Android phone (face tracking about 22 fps, three of three drops caught in a catch test of the earlier straight-drop version; phone testing covered face tracking and that early version, not the current basketball build). Keep the camera fixed and sit alone in view. The model library tries to send a usage-log request to Google; the page's Content-Security-Policy blocks it, so nothing leaves the machine. Without the camera, input is synthetic (keyboard or mouse).
 - Seated play: **Auto-frame** (a checkbox, on by default) crops the picture around your face (about six face widths wide) and re-frames only if you move much closer or farther. The camera image is **mirrored** by default so leaning left moves left. Face tracking uses MediaPipe Face Landmarker, which keeps tracking a tilted head; the plain face detector is the fallback. Open the page with `?debug=1` for a readout (face score, frames per second, position, judged position).
-- Measured on one Android phone (rear camera, glasses): face tracking about 22 frames per second, catch judging matched the head position (for example head at 41%/64%/50% for targets 35%/65%/50%). This is a single-person, single-device check, not a study; accuracy depends on lighting and camera placement. The face-position survey of 180 live Just Chatting thumbnails behind the framing numbers is in the project notes (single frame per channel, rough order of magnitude).
-- Twitch chat is verified against the local protocol simulator and the Twitch CLI mock. The anonymous IRC path was checked against live Twitch (it joined a public channel and received the room ID); its message parsing is covered by unit tests with a fake socket. The OAuth/EventSub path needs the streamer's own Twitch app.
-- OBS behaviour was verified in a synthetic Browser Source profile.
+- Measured on one Android phone (rear camera, glasses; earlier version of the game): face tracking about 22 frames per second, catch judging matched the head position (for example head at 41%/64%/50% for targets 35%/65%/50%). This is a single-person, single-device check, not a study; accuracy depends on lighting and camera placement. The face-position survey of 180 live Just Chatting thumbnails behind the framing numbers is in the project notes (single frame per channel, rough order of magnitude).
+- Twitch chat is verified against the local protocol simulator and the Twitch CLI mock. The anonymous IRC path connected to a real channel and received its room id; no real viewer command has triggered a catch yet, and its message parsing is covered by unit tests with a fake socket. The EventSub path reached the connection stage only; chat delivery through EventSub has not been verified live and needs the streamer's own Twitch app.
+- Bits and supporter features (star balls, star on the marquee) were tested with simulated cheers only; whether a real Bits message arrives through the IRC `bits` tag is unverified.
+- OBS behaviour was verified in a synthetic Browser Source profile only (not in OBS itself); the overlay shows a subset of the game page.
 
 ## Third-party assets
 - MediaPipe Tasks Vision and models (Apache-2.0): `dist/vendor/mediapipe/`, see its `NOTICE.md` for sources and checksums.
 - Three sparkle sprites from the Kenney Particle Pack by Kenney (https://kenney.nl/), license CC0 (public domain; credit is optional and given here): `dist/vendor/kenney-particles/`, with the license file and checksums in its `NOTICE.md`. They draw the catch burst effect.
+- Announcer voice clips (`dist/voice/`): generated locally with Kokoro-82M (Apache-2.0), see `dist/voice/NOTICE.md`.
 
 ## Layout
 
@@ -59,8 +66,8 @@ Tests (246 at the time of writing) use fake clocks, synthetic event IDs and gene
 | `dist/` | Static game, overlay and Twitch provider (no build step) |
 | `scripts/` | Local server, overlay relay, OBS test runner |
 | `tests/` | Node test suite and fixtures |
-| `docs/ENGINEERING_NOTES.md` | Detailed engineering notes and evidence trail |
+| `docs/ENGINEERING_NOTES.md` | Historical engineering notes and evidence trail, written before the basketball theme (some parts describe the old 3x3 game) |
 
 ## Built with Codex
 
-The game core, Twitch adapter, overlay protocol and test suite were developed in OpenAI Codex sessions. See [SUBMISSION.md](SUBMISSION.md).
+The game core, Twitch adapter, overlay protocol and test suite were developed in OpenAI Codex sessions. After the Codex subscription ended, the final integration (English UI, the login-free chat path, face tracking, the basketball theme and submission packaging) was done with Claude Code, working alongside the Codex-built core. See [SUBMISSION.md](SUBMISSION.md).

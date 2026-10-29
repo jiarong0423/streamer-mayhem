@@ -58,10 +58,10 @@ export class MatrixGame {
   constructor({ clock = () => performance.now(), onEvent = () => {}, options = {} } = {}) {
     this.clock = clock;
     this.onEvent = onEvent;
-    this.config = { maxAge: 250, confidence: .55, warning: 500, crossWarning: 1500, dropFall: 2500, dropScore: 25, bombPenalty: 25, avoidScore: 10, landJitter: 0, recovery: 1000,
+    this.config = { maxAge: 250, confidence: .55, warning: 500, crossWarning: 1500, dropFall: 2500, dropScore: 25, bombPenalty: 25, avoidScore: 10, landJitter: 0, chatThrow: true, recovery: 1000,
       actorCooldown: 3000, globalCooldown: 400, maxAttacks: 8, ringTime: 1000,
       ringDamage: 10, damage: 15, dodgeScore: 25, freezeDamage:12, freezeScore:100, freezeCooldown:8000,
-      mosquitoDamage:5,mosquitoScore:50,lavaDamage:5,lavaScore:75,actionCooldown:8000,
+      lavaDamage:5,lavaScore:75,actionCooldown:8000,
       dedupeTtl: 600000, dedupeLimit: 2000, maxResults: 200,
       ring: { left: .04, right: .96, top: .04, bottom: .96 }, ...options };
     for (const key of ['landJitter','maxAge','warning','crossWarning','dropFall','dropScore','bombPenalty','avoidScore','recovery','actorCooldown','globalCooldown','ringTime','dedupeTtl']) {
@@ -71,7 +71,7 @@ export class MatrixGame {
       if (!Number.isSafeInteger(this.config[key]) || this.config[key] < 1) throw new RangeError(`Invalid ${key}`);
     }
     if (!finite(this.config.confidence) || this.config.confidence < 0 || this.config.confidence > 1) throw new RangeError('Invalid confidence');
-    for (const key of ['damage','dodgeScore','ringDamage','freezeDamage','freezeScore','freezeCooldown','mosquitoDamage','mosquitoScore','lavaDamage','lavaScore','actionCooldown']) if (!finite(this.config[key]) || this.config[key] < 0) throw new RangeError(`Invalid ${key}`);
+    for (const key of ['damage','dodgeScore','ringDamage','freezeDamage','freezeScore','freezeCooldown','lavaDamage','lavaScore','actionCooldown']) if (!finite(this.config[key]) || this.config[key] < 0) throw new RangeError(`Invalid ${key}`);
     const ring = this.config.ring;
     if (!ring || ![ring.left,ring.right,ring.top,ring.bottom].every(finite) || ring.left > ring.right || ring.top > ring.bottom) throw new RangeError('Invalid ring');
     this.freeze=new PoseFreeze({maxAge:this.config.maxAge,confidence:this.config.confidence,...this.config.freeze});
@@ -161,7 +161,8 @@ export class MatrixGame {
     if (drop !== null) return this.#receiveAttack(event, {cell:drop + 3, kind:'DROP', cells:dropCells(drop), warning:this.config.dropFall});
     const bomb = parseBombCommand(event?.text);
     if (bomb !== null) return this.#receiveAttack(event, {cell:bomb + 3, kind:'DROP', variant:'BOMB', cells:dropCells(bomb), warning:this.config.dropFall});
-    const cell = parseMatrixCommand(event?.text);
+    // chatThrow:false (the basketball app) refuses the legacy 3x3 `!throw` from chat: it bypasses the ball and pie scoring
+    const cell = this.config.chatThrow === false ? null : parseMatrixCommand(event?.text);
     return this.#receiveAttack(event, cell === null ? null : {cell, warning:this.config.warning});
   }
 
@@ -177,7 +178,6 @@ export class MatrixGame {
   }
 
   receiveSyntheticFreeze(event) {return this.#receiveAttack(event,{kind:'FREEZE'});}
-  receiveSyntheticMosquito(event) {return this.#receiveAttack(event,{kind:'MOSQUITO'});}
   receiveSyntheticLava(event,{level=.45}={}) {return this.#receiveAttack(event,{kind:'LAVA',level});}
 
   #receiveAttack(event, target) {
@@ -196,7 +196,7 @@ export class MatrixGame {
     if (this.connection !== 'ONLINE' && !target?.local) return { accepted:false, reason:'OFFLINE' };
     if (this.mode !== 'PLAYING') return { accepted:false, reason:'NOT_PLAYING' };
     const isFreeze=target.kind==='FREEZE';
-    const isAction=['MOSQUITO','LAVA'].includes(target.kind),raising=target.kind==='LAVA'&&this.actionGame.active&&this.actionGame.kind==='LAVA';
+    const isAction=target.kind==='LAVA',raising=target.kind==='LAVA'&&this.actionGame.active&&this.actionGame.kind==='LAVA';
     if(this.freeze.active||(this.actionGame.active&&!raising)||((isFreeze||isAction)&&this.attacks.length))return {accepted:false,reason:'MODE_BUSY'};
     if(target.kind==='LAVA'&&(!finite(target.level)||target.level<.1||target.level>.8))return {accepted:false,reason:'INVALID_LEVEL'};
     if(isFreeze&&!this.freeze.canStart(this.latestFrame,this.wall))return {accepted:false,reason:'POSE_UNKNOWN'};
@@ -290,8 +290,7 @@ export class MatrixGame {
     const result=this.actionGame.takeResult();
     if(result){
       const hpBefore=this.hp,scoreBefore=this.score;
-      if(result.kind==='MOSQUITO'&&result.outcome==='HIT')this.hp=Math.max(0,this.hp-this.config.mosquitoDamage);
-      if(result.outcome==='DODGE')this.score+=result.kind==='MOSQUITO'?this.config.mosquitoScore:this.config.lavaScore;
+      if(result.outcome==='DODGE')this.score+=this.config.lavaScore;
       this.outSince=null;this.outPenalized=false;
       this.recordResult({...result,hpDelta:this.hp-hpBefore,scoreDelta:this.score-scoreBefore});
       if(this.hp===0&&this.mode!=='ROUND_END'){this.mode='ROUND_END';this.emit('status',{status:'ROUND_END'});}
