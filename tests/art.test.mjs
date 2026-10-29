@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {COLORS,FONT_STACK,easeOutBack,easeOutQuad,easeOutExpo,easeInCubic,strokedText,cachedSprite,setCanvasFactory,clearSpriteCache,spriteCacheSize,bucket,tween,stateFor,
-  drawFeedback,feedbackLabel,feedbackAnchor,shakeOffset,drawMosquito,mosquitoSize,drawLanding,drawOrb,drawBomb,drawHud,drawBanner,drawBackground,drawVignette,WING_HZ} from '../dist/art.mjs';
+  drawFeedback,feedbackLabel,feedbackAnchor,shakeOffset,drawLanding,drawOrb,drawBomb,drawHud,drawBanner,drawBackground,drawVignette} from '../dist/art.mjs';
 import {DROP_FLOOR} from '../dist/drop_lanes.mjs';
 import {drawArena} from '../dist/arena_draw.mjs';
 import {drawCameraOverlay} from '../dist/matrix_view.mjs';
@@ -85,51 +85,33 @@ test('ART-07 bomb: sparks every frame, "!" only once it is close, fuse is drawn'
   assert.ok(far.of('stroke').some(c=>c.stroke===COLORS.fuse));
 });
 
-test('ART-08 mosquito: W/48 size, 4.2Hz wings, white outline, 5-point trail when flying',()=>{
-  setCanvasFactory(()=>null);
-  assert.equal(mosquitoSize({width:960}),20);assert.equal(mosquitoSize({width:100}),7);assert.equal(WING_HZ,4.2);
-  const m={state:'FLYING',x:.5,y:.5,angle:0,landedProgress:0,probe:{r:.1}};
-  const t=fake();const info=drawMosquito(t.ctx,rect,m,0);
-  assert.equal(info.size,20);
-  const body=t.of('ellipse').find(c=>near(c.a[2],20*.55));assert.ok(body);
-  assert.equal(t.of('arc').filter(c=>/^rgba\(255,255,255/.test(c.fill)).length,5);
-  assert.ok(t.of('stroke').some(c=>c.stroke==='rgba(255,255,255,.5)'&&c.lw===1.5),'white 1.5px body outline');
-  const wing=ms=>{const f=fake();drawMosquito(f.ctx,rect,m,ms);return f.of('ellipse')[0].a[3];};
-  const period=1000/4.2;
-  assert.ok(near(wing(0),wing(period),1e-6),'period is 1/4.2 s');assert.ok(Math.abs(wing(0)-wing(period/4))>1);
-  const landed=fake();drawMosquito(landed.ctx,rect,{...m,state:'LANDED',landedProgress:.8},0);
-  assert.equal(landed.of('arc').filter(c=>/^rgba\(255,255,255/.test(c.fill)).length,0);
-  assert.ok(landed.of('strokeText').some(c=>c.a[0]==='SLAP YOUR FACE!'));
-  assert.ok(landed.of('stroke').some(c=>c.stroke==='#FF6B4A'),'ring turns red under 35%');
-});
-
-test('ART-09 labels, colours and default positions of the seven feedbacks',()=>{
+test('ART-09 labels, colours and default positions of the five feedbacks',()=>{
   const MINUS='−';
   assert.equal(feedbackLabel({outcome:'CATCH',scoreDelta:50}),'CATCH +50');assert.equal(feedbackLabel({outcome:'BOMB',scoreDelta:-25}),`BOMB ${MINUS}25`);
-  assert.equal(feedbackLabel({outcome:'AVOID',scoreDelta:25}),'AVOID +25');assert.equal(feedbackLabel({outcome:'SWAT',scoreDelta:30}),'SWAT +30');
-  assert.equal(feedbackLabel({outcome:'BITE',scoreDelta:-10}),`BITE ${MINUS}10`);assert.equal(feedbackLabel({outcome:'MISS',scoreDelta:0}),'MISS');assert.equal(feedbackLabel({outcome:'HIT',scoreDelta:-15}),'HIT');
+  assert.equal(feedbackLabel({outcome:'AVOID',scoreDelta:25}),'AVOID +25');
+  assert.equal(feedbackLabel({outcome:'MISS',scoreDelta:0}),'MISS');assert.equal(feedbackLabel({outcome:'HIT',scoreDelta:-15}),'HIT');
   const draw=(outcome,extra={},opts)=>{const f=fake();const info=drawFeedback(f.ctx,rect,{outcome,at:1000,scoreDelta:10,...extra},1400,opts);return {f,info};};
-  const colors={CATCH:COLORS.gold,BOMB:COLORS.dangerText,AVOID:COLORS.avoid,SWAT:COLORS.lime,BITE:COLORS.dangerText,MISS:COLORS.gray};
+  const colors={CATCH:COLORS.gold,BOMB:COLORS.dangerText,AVOID:COLORS.avoid,MISS:COLORS.gray};
   const spots={};
   for(const [o,c] of Object.entries(colors)){const {info}=draw(o);assert.equal(info.color,c,o);spots[o]=`${Math.round(info.x)},${Math.round(info.y)}`;}
-  assert.equal(new Set(Object.values(spots)).size,5,'positions are not all the same: '+JSON.stringify(spots));
+  assert.equal(new Set(Object.values(spots)).size,3,'positions are not all the same: '+JSON.stringify(spots));
   // explicit event point wins
-  const e=draw('SWAT',{x:.25,y:.75}).info;assert.ok(near(e.x,rect.x+.25*rect.width)&&near(e.y,rect.y+.75*rect.height));
+  const e=draw('AVOID',{x:.25,y:.75}).info;assert.ok(near(e.x,rect.x+.25*rect.width)&&near(e.y,rect.y+.75*rect.height));
   // catch sits above the catcher; bomb at the landing point on the catcher x
   const c=draw('CATCH',{},{catcherX:.35}).info,a=feedbackAnchor({outcome:'CATCH'},rect,{catcherX:.35});
   assert.ok(near(c.x,rect.x+.35*rect.width));assert.ok(a.y<rect.y+rect.height*DROP_FLOOR);
   assert.ok(feedbackAnchor({outcome:'BOMB'},rect,{catcherX:.65}).y>a.y);
-  assert.ok(draw('MISS').info.size<draw('SWAT').info.size,'MISS is small');assert.ok(draw('MISS').info.alpha<=.8);
+  assert.ok(draw('MISS').info.size<draw('AVOID').info.size,'MISS is small');assert.ok(draw('MISS').info.alpha<=.8);
   const catchText=draw('CATCH',{combo:4}).f.of('fillText').map(x=>x.a[0]);assert.deepEqual(catchText,['+10','CATCH','×4']);
 });
 
 test('ART-10 timing: pop 160ms with easeOutBack, hold, fade+rise over the last 300ms, gone at 1000ms',()=>{
-  const at=age=>{const f=fake();return drawFeedback(f.ctx,rect,{outcome:'SWAT',at:0,scoreDelta:5},age);};
+  const at=age=>{const f=fake();return drawFeedback(f.ctx,rect,{outcome:'AVOID',at:0,scoreDelta:5},age);};
   assert.ok(at(0).scale<.65);assert.equal(at(160).scale,1);assert.equal(at(500).scale,1);
   const scales=Array.from({length:16},(_,i)=>at(i*10).scale);assert.ok(Math.max(...scales)>1.02&&Math.max(...scales)<=1.1,'overshoots a little, as easeOutBack does');assert.ok(scales[1]>scales[0]);
   assert.equal(at(700).alpha,1);assert.ok(at(850).alpha<1&&at(850).alpha>0);assert.ok(at(999).alpha<.01);
   assert.ok(at(990).y<at(500).y,'rises while fading');assert.equal(at(1000),null);assert.equal(at(5000),null);
-  const f=fake();assert.equal(drawFeedback(f.ctx,rect,null,0),null);assert.equal(drawFeedback(f.ctx,rect,{outcome:'SWAT',at:NaN},0),null);
+  const f=fake();assert.equal(drawFeedback(f.ctx,rect,null,0),null);assert.equal(drawFeedback(f.ctx,rect,{outcome:'AVOID',at:NaN},0),null);
 });
 
 test('ART-11 BOMB: expanding orange blast and a 300ms decaying shake of at most W/160',()=>{
@@ -141,17 +123,12 @@ test('ART-11 BOMB: expanding orange blast and a 300ms decaying shake of at most 
   assert.ok(peak>rect.width/160*.3);assert.deepEqual(shakeOffset(300,960),{x:0,y:0,amp:0});assert.equal(shakeOffset(-1,960).amp,0);assert.ok(shakeOffset(250,960).amp<shakeOffset(50,960).amp);
 });
 
-test('ART-12 SWAT spots, MISS ring and BITE marks appear only for their own outcome',()=>{
+test('ART-12 the MISS ring appears only for its own outcome',()=>{
   const count=(o,age,k)=>{const f=fake();drawFeedback(f.ctx,rect,{outcome:o,at:0,scoreDelta:1},age);return f.of(k).length;};
-  assert.equal(count('SWAT',100,'arc'),6);assert.equal(count('CATCH',100,'arc'),0);
-  assert.ok(count('SWAT',100,'ellipse')>0,'flipped mosquito ghost');assert.equal(count('SWAT',300,'ellipse'),0);
   assert.equal(count('MISS',100,'ellipse'),1);assert.equal(count('MISS',500,'ellipse'),0);
-  assert.equal(count('BITE',500,'arc'),2);assert.equal(count('BITE',950,'arc'),0);
-  const a=fake();drawFeedback(a.ctx,rect,{outcome:'BITE',at:0,scoreDelta:-5},40);const b=fake();drawFeedback(b.ctx,rect,{outcome:'BITE',at:0,scoreDelta:-5},50);
-  assert.notEqual(a.of('translate')[0].a[0],b.of('translate')[0].a[0],'text jitters at 25Hz during the first 300ms');
 });
 
-test('ART-13 vignette: bite uses inner .45H, overlay ring .5H, zero strength draws nothing',()=>{
+test('ART-13 vignette: inner .45H, overlay ring .5H, zero strength draws nothing',()=>{
   const g=[];const ctx=new Proxy({},{get:(t,k)=>k==='createRadialGradient'?(...a)=>{g.push(a);return {addColorStop(){}};}:()=>{},set:()=>true});
   assert.equal(drawVignette(ctx,rect,.4),true);assert.ok(near(g[0][2],540*.45));
   drawVignette(ctx,rect,.4,{ring:true});assert.ok(near(g[1][2],540*.5));assert.equal(drawVignette(ctx,rect,0),false);
@@ -189,7 +166,7 @@ test('ART-16 banner: plain, graded (S gold, A lime, B white; staggered lines) an
   const plain=draw({text:'ROUND OVER',at:0},1000);assert.equal(plain.r.kind,'plain');assert.equal(draw({text:'x',at:0},6000).r,null);assert.equal(draw(null,0).r,null);
   const color=g=>draw({text:'T',at:0,grade:g},1000).f.of('fillText').find(c=>c.a[0]===g).fill;
   assert.equal(color('S'),COLORS.gold);assert.equal(color('A'),COLORS.lime);assert.equal(color('B'),COLORS.paper);
-  const s=draw({text:'T',at:0,grade:'S',lines:['SCORE 900','CATCH 12','SWAT 3']},1000);assert.equal(s.r.kind,'grade');
+  const s=draw({text:'T',at:0,grade:'S',lines:['SCORE 900','CATCH 12','AVOID 3']},1000);assert.equal(s.r.kind,'grade');
   assert.ok(s.f.calls.some(c=>c.k==='fillRect'&&c.fill==='rgba(10,16,10,.55)'&&c.a[2]===rect.width),'full curtain');
     const t=age=>draw({text:'T',at:0,grade:'A',lines:['L1','L2','L3']},age).f.of('fillText').map(c=>c.a[0]);
   assert.deepEqual(t(500),['A','L1']);assert.deepEqual(t(700),['A','L1','L2']);assert.deepEqual(t(900),['A','L1','L2','L3']);
@@ -224,7 +201,7 @@ test('ART-19 arena: BOMB shakes the picture inside W/160 and then stops; feedbac
   assert.equal(small(shaken).length,1);assert.ok(t.a[0]!==0||t.a[1]!==0);
   assert.equal(small(run({outcome:'BOMB',at:1000,scoreDelta:-25},1400)).length,0);
   assert.equal(small(run({outcome:'CATCH',at:1000,scoreDelta:50},1050)).length,0);
-  const placed=run({outcome:'SWAT',at:1000,scoreDelta:30,x:.2,y:.3},1500);
+  const placed=run({outcome:'AVOID',at:1000,scoreDelta:30,x:.2,y:.3},1500);
   assert.ok(placed.of('translate').some(c=>near(c.a[0],g.visible.x+.2*w)&&near(c.a[1],g.visible.y+.3*g.visible.height)));
   assert.ok(run({outcome:'CATCH',at:1000,scoreDelta:50},1500).of('fillText').some(c=>c.a[0]==='+50'));
   assert.equal(run({outcome:'CATCH',at:1000,scoreDelta:50},3000).of('fillText').some(c=>c.a[0]==='+50'),false,'expired');
@@ -253,5 +230,15 @@ test('ART-21 catcher ring grows toward 1.35x with easeOutBack, never instantly',
 
 test('ART-22 overlay path: drawCameraOverlay takes an optional now and keeps its old call shape',()=>{
   setCanvasFactory(()=>null);const g=geometry();
-  for(const opts of [{clear:false},{clear:false,now:1234}]){const f=fake();drawCameraOverlay(f.ctx,g,{mode:'PLAYING',attacks:[{cell:5,kind:'DROP',cells:[2,5,8],progress:.5,variant:'BOMB'}]},opts);assert.ok(f.of('arc').length>5);}
+  for(const opts of [{clear:false},{clear:false,now:1234}]){const f=fake();drawCameraOverlay(f.ctx,g,{mode:'PLAYING',attacks:[{cell:5,kind:'DROP',cells:[2,5,8],progress:.9,variant:'BOMB'}]},opts);assert.ok(f.of('arc').length>5);}
+});
+
+test('ART-T1 (theme) a three-pointer is a differently coloured ball: its own cached sprite and violet, the two-pointer stays orange',()=>{
+  setCanvasFactory(()=>null);
+  const fills=three=>{const f=fake();drawOrb(f.ctx,100,100,10,0,.5,three);return f;};
+  const two=fills(false),thr=fills(true);
+  assert.ok(two.of('arc').length>0&&thr.of('arc').length>0);
+  const colors=f=>f.calls.map(c=>JSON.stringify(c)).join('');
+  assert.ok(/255,140,40/.test(colors(two))&&!/160,110,255/.test(colors(two)),'two-pointer is orange');
+  assert.ok(/160,110,255/.test(colors(thr))&&!/rgba\(255,140,40,\.0/.test(colors(thr)),'three-pointer is violet');
 });

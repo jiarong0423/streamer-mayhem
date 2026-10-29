@@ -1,4 +1,4 @@
-// Twitch provider contract. Live networking remains deliberately locked.
+// Twitch provider contract. Live networking is allowed when LIVE_NETWORK_ENABLED is true in twitch_endpoints.mjs (it is in this build); when false, connections are refused.
 import {authorizationUrl,validateUserToken} from './twitch_chat_contract.mjs';
 import {EventSubAdapter} from './eventsub_adapter.mjs';
 import {MockEventSubTransport} from './mock_eventsub_transport.mjs';

@@ -98,26 +98,43 @@ export function drawBackground(ctx,w,h){
 }
 
 // ---------- falling items ----------
-const PAINT_ORB=(g,cx,cy,r)=>{
-  const glow=g.createRadialGradient(cx,cy,r*.2,cx,cy,r*2.6);
-  glow.addColorStop(0,'rgba(255,214,90,.5)');glow.addColorStop(1,'rgba(255,214,90,0)');
-  g.fillStyle=glow;g.beginPath();g.arc(cx,cy,r*2.6,0,2*Math.PI);g.fill();
-  const orb=g.createRadialGradient(cx-r*.35,cy-r*.4,r*.1,cx,cy,r);
-  orb.addColorStop(0,COLORS.goldHi);orb.addColorStop(.55,COLORS.gold);orb.addColorStop(1,COLORS.goldDark);
-  g.fillStyle=orb;g.beginPath();g.arc(cx,cy,r,0,2*Math.PI);g.fill();
+// A basketball (theme): a ball with black seams, painted in two colours. Orange is the two-pointer, violet the three-pointer.
+const ballPainter=({glow,hi,mid,dark})=>(g,cx,cy,r)=>{
+  const halo=g.createRadialGradient(cx,cy,r*.2,cx,cy,r*2.6);
+  halo.addColorStop(0,glow);halo.addColorStop(1,glow.replace(/[\d.]+\)$/,'0)'));
+  g.fillStyle=halo;g.beginPath();g.arc(cx,cy,r*2.6,0,2*Math.PI);g.fill();
+  const ball=g.createRadialGradient(cx-r*.35,cy-r*.4,r*.1,cx,cy,r);
+  ball.addColorStop(0,hi);ball.addColorStop(.55,mid);ball.addColorStop(1,dark);
+  g.fillStyle=ball;g.beginPath();g.arc(cx,cy,r,0,2*Math.PI);g.fill();
+  g.save();g.beginPath();g.arc(cx,cy,r,0,2*Math.PI);g.clip();
+  g.strokeStyle='rgba(30,14,6,.85)';g.lineWidth=Math.max(1.5,r/9);
+  g.beginPath();g.moveTo(cx,cy-r);g.lineTo(cx,cy+r);g.moveTo(cx-r,cy);g.lineTo(cx+r,cy);g.stroke();
+  g.beginPath();g.arc(cx-r*1.15,cy,r*.95,-Math.PI/2.6,Math.PI/2.6);g.stroke();
+  g.beginPath();g.arc(cx+r*1.15,cy,r*.95,Math.PI-Math.PI/2.6,Math.PI+Math.PI/2.6);g.stroke();
+  g.restore();
   g.strokeStyle='rgba(10,16,10,.8)';g.lineWidth=Math.max(1.5,r/10);g.beginPath();g.arc(cx,cy,r,0,2*Math.PI);g.stroke();
-  g.fillStyle='rgba(255,255,255,.9)';g.beginPath();g.ellipse(cx-r*.35,cy-r*.4,r*.22,r*.22,0,0,2*Math.PI);g.fill();
+  g.fillStyle='rgba(255,255,255,.55)';g.beginPath();g.ellipse(cx-r*.35,cy-r*.4,r*.2,r*.14,-.5,0,2*Math.PI);g.fill();
 };
+const PAINT_ORB=ballPainter({glow:'rgba(255,140,40,.5)',hi:'#FFB36B',mid:'#F0791E',dark:'#B34A0B'});
+export const THREE_BALL_COLOR='#B58CFF';   // the three-pointer's colour, also used for its label
+const PAINT_ORB3=ballPainter({glow:'rgba(160,110,255,.55)',hi:'#E3D3FF',mid:'#9B5CFF',dark:'#5326B5'});
+export const STAR_BALL_COLOR='#FFD23F';   // the star ball (a supporter's name on it): gold
+const PAINT_ORBSTAR=ballPainter({glow:'rgba(255,210,63,.65)',hi:'#FFF6BF',mid:'#FFC933',dark:'#B07A00'});
 const PAINT_RED_GLOW=(g,cx,cy,r)=>{
   const glow=g.createRadialGradient(cx,cy,r*.3,cx,cy,r*2.6);
   glow.addColorStop(0,'rgba(255,90,70,.9)');glow.addColorStop(1,'rgba(255,90,70,0)');
   g.fillStyle=glow;g.beginPath();g.arc(cx,cy,r*2.6,0,2*Math.PI);g.fill();
 };
-const PAINT_BOMB_CORE=(g,cx,cy,r)=>{
-  const core=g.createRadialGradient(cx-r*.3,cy-r*.35,r*.1,cx,cy,r);
-  core.addColorStop(0,'#7A3A3A');core.addColorStop(.6,'#2A1313');core.addColorStop(1,'#120808');
-  g.fillStyle=core;g.beginPath();g.arc(cx,cy,r,0,2*Math.PI);g.fill();
-  g.strokeStyle=COLORS.dangerWarm;g.lineWidth=Math.max(1.5,r/6);g.beginPath();g.arc(cx,cy,r,0,2*Math.PI);g.stroke();
+const PAINT_BOMB_CORE=(g,cx,cy,r)=>{   // a cream pie (theme): crust, white cream dome, cherry
+  const crust=g.createRadialGradient(cx-r*.3,cy+r*.1,r*.1,cx,cy+r*.2,r*1.05);
+  crust.addColorStop(0,'#F0C48A');crust.addColorStop(1,'#B97B3E');
+  g.fillStyle=crust;g.beginPath();g.ellipse(cx,cy+r*.25,r,r*.62,0,0,2*Math.PI);g.fill();
+  g.strokeStyle=COLORS.dangerWarm;g.lineWidth=Math.max(1.5,r/7);g.beginPath();g.ellipse(cx,cy+r*.25,r,r*.62,0,0,2*Math.PI);g.stroke();
+  const cream=g.createRadialGradient(cx-r*.25,cy-r*.35,r*.1,cx,cy-r*.1,r*.8);
+  cream.addColorStop(0,'#FFFFFF');cream.addColorStop(1,'#F3E6D6');
+  g.fillStyle=cream;g.beginPath();g.ellipse(cx,cy-r*.05,r*.78,r*.55,0,0,2*Math.PI);g.fill();
+  g.fillStyle='#D8283C';g.beginPath();g.arc(cx+r*.05,cy-r*.42,r*.2,0,2*Math.PI);g.fill();
+  g.fillStyle='rgba(255,255,255,.7)';g.beginPath();g.arc(cx-r*.02,cy-r*.48,r*.06,0,2*Math.PI);g.fill();
 };
 // Thin vertical glow for the guide line, cached by height bucket and stretched.
 export function drawGuide(ctx,x,top,bottom,radius,hue){
@@ -139,13 +156,14 @@ function drawAim(ctx,cx,y,r,p,hue){
   const t=clamp((p-.85)/.15,0,1);
   ctx.save();ctx.strokeStyle=`rgba(${hue},.9)`;ctx.lineWidth=Math.max(1.5,r/6);ctx.beginPath();ctx.arc(cx,y,r*lerp(2.2,1,t),0,2*Math.PI);ctx.stroke();ctx.restore();
 }
-export function drawOrb(ctx,cx,y,r,now=0,p=0){
-  for(let i=3;i>=1;i--){ctx.fillStyle=`rgba(255,210,63,${(.09*(4-i)).toFixed(3)})`;ctx.beginPath();ctx.arc(cx,y-i*r*1.1,r*(1-.2*i),0,2*Math.PI);ctx.fill();}
+export function drawOrb(ctx,cx,y,r,now=0,p=0,style=false){   // style: false/'two' orange, true/'three' violet, 'star' gold
+  const star=style==='star',three=style===true||style==='three';
+  for(let i=3;i>=1;i--){ctx.fillStyle=`${star?'rgba(255,210,63,':three?'rgba(160,110,255,':'rgba(255,140,40,'}${(.09*(4-i)).toFixed(3)})`;ctx.beginPath();ctx.arc(cx,y-i*r*1.1,r*(1-.2*i),0,2*Math.PI);ctx.fill();}
   const flash=.3+.4*(.5+.5*Math.sin(now/1000*6*Math.PI)),len=r*2.2;
   ctx.save();ctx.strokeStyle=`rgba(255,246,191,${flash.toFixed(3)})`;ctx.lineWidth=Math.max(1.5,r/8);ctx.lineCap='round';
   ctx.beginPath();ctx.moveTo(cx-len,y);ctx.lineTo(cx+len,y);ctx.moveTo(cx,y-len);ctx.lineTo(cx,y+len);ctx.stroke();ctx.restore();
   drawAim(ctx,cx,y,r,p,'217,249,101');
-  stamp(ctx,'orb',r,2.6,PAINT_ORB,cx,y);
+  stamp(ctx,star?'orbstar':three?'orb3':'orb',r,2.6,star?PAINT_ORBSTAR:three?PAINT_ORB3:PAINT_ORB,cx,y);
 }
 export function drawBomb(ctx,cx,y,r,now=0,p=0){
   const near=easeInCubic(p),breath=.5+.15*Math.sin(2*Math.PI*1.5*(1+near)*now/1000);
@@ -173,55 +191,17 @@ export function drawBomb(ctx,cx,y,r,now=0,p=0){
   if(p>.6)strokedText(ctx,'!',cx,y-r*2.2,Math.max(MIN_TEXT_PX,r*1.1),COLORS.danger,{alpha:clamp((p-.6)/.2,0,1)});
 }
 
-// ---------- mosquito ----------
-export const WING_HZ=4.2;
-export const mosquitoSize=rect=>Math.max(7,rect.width/48);
-// scale/alpha let the swat effect play the "flip and shrink" as a ghost. A flying mosquito leaves a 5-point trail behind its heading.
-export function drawMosquito(ctx,rect,m,now,{scale=1,alpha=1,flip=false,trail=true}={}){
-  const base=mosquitoSize(rect),x=rect.x+m.x*rect.width,y=rect.y+m.y*rect.height,landed=m.state==='LANDED';
-  ctx.save();ctx.beginPath();ctx.rect(rect.x,rect.y,rect.width,rect.height);ctx.clip();ctx.globalAlpha*=alpha;
-  if(landed){
-    const rad=Math.max(base*3,m.probe.r*rect.width),left=1-m.landedProgress,danger=left<.35;
-    ctx.lineWidth=Math.max(5,base*.8);ctx.lineCap='round';ctx.strokeStyle='rgba(255,255,255,.2)';ctx.beginPath();ctx.arc(x,y,rad,0,Math.PI*2);ctx.stroke();
-    ctx.strokeStyle='rgba(10,16,10,.7)';ctx.lineWidth=Math.max(5,base*.8)+4;ctx.beginPath();ctx.arc(x,y,rad,-Math.PI/2,-Math.PI/2+Math.PI*2*left);ctx.stroke();
-    ctx.strokeStyle=danger?'#FF6B4A':COLORS.lime;ctx.lineWidth=Math.max(5,base*.8);ctx.shadowColor=ctx.strokeStyle;ctx.shadowBlur=base*1.2;
-    ctx.beginPath();ctx.arc(x,y,rad,-Math.PI/2,-Math.PI/2+Math.PI*2*left);ctx.stroke();ctx.shadowBlur=0;
-    if(danger&&Math.sin(2*Math.PI*6*now/1000)>0){ctx.strokeStyle='rgba(255,107,74,.55)';ctx.lineWidth=Math.max(2,base*.25);ctx.beginPath();ctx.arc(x,y,rad+base*.9,0,Math.PI*2);ctx.stroke();}
-    const pulse=1+.06*Math.sin(now/90);
-    strokedText(ctx,'SLAP YOUR FACE!',x,y-rad-base*1.6,Math.max(MIN_TEXT_PX,rect.height/14)*pulse,danger?COLORS.dangerText:COLORS.lime);
-  }else if(trail){
-    for(let i=5;i>=1;i--){const d=base*.9*i;ctx.fillStyle=`rgba(255,255,255,${(.25*(1-i/6)).toFixed(3)})`;ctx.beginPath();ctx.arc(x-Math.cos(m.angle)*d,y-Math.sin(m.angle)*d,Math.max(1.5,base*.35*(1-i/8)),0,Math.PI*2);ctx.fill();}
-  }
-  const size=base*(landed?.9:1),jitter=landed?(rng(Math.floor(now/140)+5)()-.5)*2*size*.12:0;
-  ctx.translate(x+jitter,y+(landed?(rng(Math.floor(now/140)+9)()-.5)*2*size*.12:0));ctx.rotate(landed?0:m.angle+Math.PI/2);
-  if(flip)ctx.scale(1,-1);if(scale!==1)ctx.scale(scale,scale);
-  const flap=landed?.35:.55+.45*Math.sin(2*Math.PI*WING_HZ*now/1000);
-  ctx.fillStyle='rgba(220,235,255,.65)';ctx.strokeStyle='rgba(255,255,255,.75)';ctx.lineWidth=Math.max(1,size/8);
-  for(const side of [-1,1]){
-    ctx.save();ctx.scale(side,1);ctx.rotate(-.5-.35*flap);ctx.beginPath();ctx.ellipse(size*.9,-size*.2,size*1.3,size*.45*flap+size*.12,0,0,Math.PI*2);ctx.fill();ctx.stroke();
-    ctx.beginPath();ctx.moveTo(size*.1,-size*.2);ctx.lineTo(size*2.1,-size*.2);ctx.stroke();ctx.restore();
-  }
-  ctx.strokeStyle='#1a1a1a';ctx.lineWidth=Math.max(1,size/5);ctx.lineCap='round';
-  for(const k of [-1,0,1])for(const side of [-1,1]){ctx.beginPath();ctx.moveTo(side*size*.2,k*size*.35);ctx.lineTo(side*size*1.1,k*size*.35+size*.5);ctx.stroke();}
-  ctx.beginPath();ctx.moveTo(0,-size*.9);ctx.lineTo(0,-size*1.7);ctx.stroke();
-  const body=ctx.createRadialGradient(-size*.2,-size*.2,size*.1,0,0,size);body.addColorStop(0,'#5a5a5a');body.addColorStop(1,'#111');
-  ctx.fillStyle=body;ctx.beginPath();ctx.ellipse(0,0,size*.55,size*1.05,0,0,Math.PI*2);ctx.fill();
-  ctx.strokeStyle='rgba(255,255,255,.5)';ctx.lineWidth=1.5;ctx.stroke();
-  ctx.restore();
-  return {size,flapHz:WING_HZ,landed};
-}
-
-// ---------- feedback (CATCH / BOMB / AVOID / SWAT / BITE / MISS / HIT) ----------
+// ---------- feedback (CATCH / BOMB / AVOID / MISS / HIT) ----------
 export const FEEDBACK_MS=1000,FEEDBACK_FADE_MS=300,POP_MS=160,BOMB_SHAKE_MS=300;
 const MINUS='−';
 const STYLE={
   CATCH:{color:COLORS.gold,scored:true},BOMB:{color:COLORS.dangerText,scored:true},AVOID:{color:COLORS.avoid,scored:true},
-  SWAT:{color:COLORS.lime,scored:true},BITE:{color:COLORS.dangerText,scored:true},MISS:{color:COLORS.gray,scale:.7,alpha:.8},HIT:{color:COLORS.dangerText}
+  MISS:{color:COLORS.gray,scale:.7,alpha:.8},HIT:{color:COLORS.dangerText}
 };
 const fin=Number.isFinite;
 export function feedbackLabel(effect){
   const d=effect.scoreDelta,st=STYLE[effect.outcome];
-  if(st?.scored&&fin(d)&&d!==0)return `${effect.outcome} ${d>0?'+':MINUS}${Math.abs(d)}`;
+  if(st?.scored&&fin(d)&&d!==0)return `${effect.outcome==='CATCH'&&fin(effect.points)?`${effect.points}PT`:effect.outcome} ${d>0?'+':MINUS}${Math.abs(d)}`;
   return effect.outcome;
 }
 // Where the feedback shows: the event point (effect.x/y, 0..1 of the window) or a per-outcome default.
@@ -231,8 +211,6 @@ export function feedbackAnchor(effect,rect,{catcherX=.5}={}){
   switch(effect.outcome){
     case 'CATCH':{const p=point(catcherX,DROP_FLOOR);return {x:p.x,y:has?p.y:p.y-r*2};}
     case 'BOMB':case 'MISS':return point(catcherX,DROP_FLOOR);
-    case 'SWAT':return point(.5,.4);
-    case 'BITE':return point(.5,.45);
     case 'AVOID':return point(.5,.35);
     default:return {x:rect.x+rect.width/2,y:rect.y+Math.min(72,rect.height/4)};
   }
@@ -243,7 +221,7 @@ export function shakeOffset(age,width){
   return {x:amp*Math.sin(age*.11*Math.PI),y:amp*Math.cos(age*.17*Math.PI),amp};
 }
 // Draws one feedback; returns a descriptor of what was drawn (null when expired) so tests and callers can read position/colour/scale.
-export function drawFeedback(ctx,rect,effect,now,{catcherX=.5,facePos=null}={}){
+export function drawFeedback(ctx,rect,effect,now,{catcherX=.5}={}){
   if(!effect||!fin(effect.at)||!fin(now))return null;
   const age=Math.max(0,now-effect.at);if(age>=FEEDBACK_MS)return null;
   const st=STYLE[effect.outcome]??STYLE.HIT,anchor=feedbackAnchor(effect,rect,{catcherX}),label=feedbackLabel(effect);
@@ -256,21 +234,10 @@ export function drawFeedback(ctx,rect,effect,now,{catcherX=.5,facePos=null}={}){
     const p=easeOutExpo(age/350),r=rect.width/6*p;
     if(r>0){const g=ctx.createRadialGradient(anchor.x,anchor.y,0,anchor.x,anchor.y,r);g.addColorStop(0,'rgba(255,139,42,.9)');g.addColorStop(.6,'rgba(255,139,42,.45)');g.addColorStop(1,'rgba(255,139,42,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(anchor.x,anchor.y,r,0,2*Math.PI);ctx.fill();}
   }
-  if(effect.outcome==='SWAT'){
-    const t=easeOutQuad(age/300),spotAlpha=clamp(1-(age-300)/400,0,1);
-    if(spotAlpha>0)for(let i=0;i<6;i++){const a=i*Math.PI/3+.4,d=unit*3*t;ctx.fillStyle=`rgba(30,32,28,${(.8*spotAlpha).toFixed(3)})`;ctx.beginPath();ctx.arc(anchor.x+Math.cos(a)*d,anchor.y+Math.sin(a)*d,unit*.3*(1-.4*t),0,2*Math.PI);ctx.fill();}
-    if(age<250){const rel={x:(anchor.x-rect.x)/rect.width,y:(anchor.y-rect.y)/rect.height};drawMosquito(ctx,rect,{state:'FLYING',x:rel.x,y:rel.y,angle:0,landedProgress:0,probe:{r:.04}},now,{scale:1-age/250,alpha:1-age/250,flip:true,trail:false});}
-  }
   if(effect.outcome==='MISS'&&age<400){
     const t=easeOutQuad(age/400);ctx.strokeStyle=rgba(COLORS.gray,.5*(1-t));ctx.lineWidth=Math.max(2,unit*.4);ctx.beginPath();ctx.ellipse(anchor.x,anchor.y,unit*(2+4*t),unit*(1+1.4*t),0,0,2*Math.PI);ctx.stroke();
   }
-  if(effect.outcome==='BITE'&&age<900){
-    const f=facePos??{x:anchor.x,y:anchor.y},a=age<600?1:1-(age-600)/300,r=unit*.5;
-    for(const side of [-1,1]){ctx.fillStyle=`rgba(255,90,70,${(.8*a).toFixed(3)})`;ctx.strokeStyle=`rgba(10,16,10,${(.7*a).toFixed(3)})`;ctx.lineWidth=2;ctx.beginPath();ctx.arc(f.x+side*r*1.3,f.y+side*r*.5,r,0,2*Math.PI);ctx.fill();ctx.stroke();}
-  }
-  let jx=0,jy=0;
-  if(effect.outcome==='BITE'&&age<300){jx=3*Math.sin(2*Math.PI*25*age/1000);jy=3*Math.cos(2*Math.PI*25*age/1000);}
-  const tx=anchor.x+jx,ty=anchor.y+jy+rise;
+  const tx=anchor.x,ty=anchor.y+rise;
   ctx.translate(tx,ty);ctx.scale(scale,scale);
   const d=effect.scoreDelta;
   if(effect.outcome==='CATCH'&&fin(d)&&d!==0){
@@ -281,7 +248,7 @@ export function drawFeedback(ctx,rect,effect,now,{catcherX=.5,facePos=null}={}){
   ctx.restore();
   return {outcome:effect.outcome,label,x:tx,y:ty,color:st.color,scale,alpha,size,age};
 }
-// Red flush at the edges (bite) with an adjustable inner radius; the overlay uses a narrow ring so the stream scene stays clear.
+// Red flush at the edges (a hit) with an adjustable inner radius; the overlay uses a narrow ring so the stream scene stays clear.
 export function drawVignette(ctx,rect,strength,{inner=.45,rgb='255,60,50',ring=false}={}){
   if(!(strength>0))return false;
   const cx=rect.x+rect.width/2,cy=rect.y+rect.height/2,g=ctx.createRadialGradient(cx,cy,rect.height*(ring?.5:inner),cx,cy,rect.height*.9);

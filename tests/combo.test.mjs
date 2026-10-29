@@ -4,6 +4,7 @@ import {MatrixGame,gradeFor,comboMultiplier} from '../dist/matrix.mjs';
 
 const at=x=>({x,y:.5,visibility:1});
 const frame=(id,t,nose)=>({frameId:id,captureTime:t,nose,leftShoulder:null,rightShoulder:null});
+// Note: these drops carry no landX, so they use the legacy fixed per-column score (25), not the 20/30-point ball scores of the trajectory build (see drop_game.test.mjs).
 // Streamer stands in the middle column (x .5); drops/bombs on column 2 are caught, on column 1 are missed/avoided.
 function setup(){
   const clock={now:0},game=new MatrixGame({clock:()=>clock.now});
@@ -18,8 +19,8 @@ function setup(){
   return {game,clock,feed,land,catchGold:()=>land(2),missGold:()=>land(1),catchBomb:()=>land(2,'BOMB'),avoidBomb:()=>land(1,'BOMB')};
 }
 
-test('COMBO-01 gradeFor thresholds: B 500, A 1000, S 1600, below is null',()=>{
-  for(const [score,grade] of [[0,null],[499,null],[500,'B'],[999,'B'],[1000,'A'],[1599,'A'],[1600,'S'],[99999,'S'],[-5,null],[NaN,null],[undefined,null]])assert.equal(gradeFor(score),grade,String(score));
+test('COMBO-01 gradeFor thresholds (theme): B 700, A 900, S 1400, below is null',()=>{
+  for(const [score,grade] of [[0,null],[699,null],[700,'B'],[899,'B'],[900,'A'],[1399,'A'],[1400,'S'],[99999,'S'],[-5,null],[NaN,null],[undefined,null]])assert.equal(gradeFor(score),grade,String(score));
 });
 
 test('COMBO-02 multiplier tiers: x1 below 5, x1.5 from 5, x2 from 10',()=>{
@@ -53,13 +54,6 @@ test('COMBO-06 one or two misses keep the combo; the third miss in a row resets 
   s.missGold();s.missGold();assert.equal(s.game.snapshot().combo,6);
   const r=s.missGold();assert.equal(r.outcome,'MISS');assert.equal(s.game.snapshot().combo,0);
   assert.equal(s.catchGold().scoreDelta,25);
-});
-
-test('COMBO-07 a mosquito bite resets the combo; swat and dodge do not; UNKNOWN changes nothing',()=>{
-  const s=setup();for(let i=0;i<5;i++)s.catchGold();
-  s.game.settleFaceMosquito({outcome:'SWAT'});s.game.settleFaceMosquito({outcome:'DODGE'});s.game.settleFaceMosquito({outcome:'UNKNOWN'});
-  assert.equal(s.game.snapshot().combo,5);
-  s.game.settleFaceMosquito({outcome:'BITE'});assert.equal(s.game.snapshot().combo,0);
 });
 
 test('COMBO-08 reset() clears combo state',()=>{

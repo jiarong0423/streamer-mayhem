@@ -54,3 +54,13 @@ test('AUTO-07 turning the head (narrower face, same height) does not re-frame; m
   a.update({cx:.5,cy:.45,fw:.16,fh:.5},6000);
   assert.ok(a.update({cx:.5,cy:.45,fw:.16,fh:.5},6600),'face got much taller: re-frame');
 });
+
+import {createCropGate} from '../dist/auto_frame.mjs';
+test('GATE-01 (theme) a crop is held while a shot is on screen, applied once the field is clear, and a newer crop replaces an older held one',()=>{
+  const g=createCropGate(),a={left:.1,right:.1,top:.1,bottom:.1},b={left:.2,right:.2,top:.2,bottom:.2};
+  assert.equal(g.take(false),null);                         // nothing offered
+  g.offer(a);assert.equal(g.pending,true);assert.equal(g.take(true),null);assert.equal(g.pending,true);   // a ball is falling: hold it
+  g.offer(b);g.offer(null);assert.equal(g.take(true),null);  // a newer crop replaces; null offers change nothing
+  assert.equal(g.take(false),b);assert.equal(g.pending,false);assert.equal(g.take(false),null);          // applied once, only the newest
+  g.offer(a);g.clear();assert.equal(g.take(false),null);
+});

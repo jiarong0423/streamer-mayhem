@@ -10,10 +10,11 @@ const routes=new Map([
   ['/styles.css',['styles.css','text/css; charset=utf-8']], ['/ux.css',['ux.css','text/css; charset=utf-8']],
   ['/overlay.html',['overlay.html','text/html; charset=utf-8']], ['/overlay.css',['overlay.css','text/css; charset=utf-8']],
   ['/oauth-callback.html',['oauth-callback.html','text/html; charset=utf-8']],
-  ...['app.mjs','frame_source.mjs','overlay.mjs','overlay_protocol.mjs','matrix.mjs','pose_freeze.mjs','action_games.mjs','matrix_view.mjs','camera_geometry.mjs','arena_draw.mjs','eventsub_adapter.mjs','mock_eventsub_transport.mjs','mock_oauth.mjs','oauth-callback.mjs','twitch_chat_contract.mjs','twitch_provider.mjs','twitch_endpoints.mjs','provider_activation.mjs','auth_popup_controller.mjs','irc_anonymous.mjs','camera_tracker.mjs','auto_frame.mjs','catch_fx.mjs','drop_lanes.mjs','art.mjs','drop_waves.mjs','face_mosquito.mjs','motion_probe.mjs','sfx.mjs'].map(name=>[`/${name}`,[name,'text/javascript; charset=utf-8']]),
+  ...['app.mjs','ticker.mjs','frame_source.mjs','overlay.mjs','overlay_protocol.mjs','overlay_publisher.mjs','overlay_scene.mjs','matrix.mjs','pose_freeze.mjs','action_games.mjs','matrix_view.mjs','camera_geometry.mjs','arena_draw.mjs','eventsub_adapter.mjs','mock_eventsub_transport.mjs','mock_oauth.mjs','oauth-callback.mjs','twitch_chat_contract.mjs','twitch_provider.mjs','twitch_endpoints.mjs','provider_activation.mjs','auth_popup_controller.mjs','irc_anonymous.mjs','camera_tracker.mjs','auto_frame.mjs','catch_fx.mjs','drop_lanes.mjs','art.mjs','drop_waves.mjs','sfx.mjs'].map(name=>[`/${name}`,[name,'text/javascript; charset=utf-8']]),
 ]);
 for(const [file,type] of [['vision_bundle.mjs','text/javascript; charset=utf-8'],['wasm/vision_wasm_internal.js','text/javascript; charset=utf-8'],['wasm/vision_wasm_internal.wasm','application/wasm'],['pose_landmarker_lite.task','application/octet-stream'],['blaze_face_short_range.tflite','application/octet-stream'],['face_landmarker.task','application/octet-stream']])routes.set(`/vendor/mediapipe/${file}`,[`vendor/mediapipe/${file}`,type]);
 for(const file of ['star_01.png','star_02.png','star_06.png'])routes.set(`/vendor/kenney-particles/${file}`,[`vendor/kenney-particles/${file}`,'image/png']);
+for(const file of ['good_shot.wav','nice_shot.wav','three_points.wav','thanks.wav'])routes.set(`/voice/${file}`,[`voice/${file}`,'audio/wav']);
 const smoke=process.argv.includes('--smoke');
 const extra=process.argv.slice(2).filter(arg=>arg!=='--smoke');
 if(extra.length){process.stderr.write('Usage: node scripts/serve-local.mjs [--smoke]\n');process.exit(2);}
@@ -29,6 +30,6 @@ const server=http.createServer(async (request,response)=>{
 });
 server.on('close',()=>relay.close());
 server.on('error',error=>{process.stderr.write(`Server error: ${error.message}\n`);process.exitCode=1;});
-server.listen(smoke?0:4173,'127.0.0.1',()=>process.stdout.write(`Streamer Mayhem: http://127.0.0.1:${server.address().port}/\n`));
+server.listen(smoke?0:Number(process.env.PORT||4173),'127.0.0.1',()=>process.stdout.write(`Streamer Mayhem: http://127.0.0.1:${server.address().port}/\n`));
 if(smoke)setTimeout(()=>{relay.close();server.close();},55000).unref();
 for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>{relay.close();server.close();});

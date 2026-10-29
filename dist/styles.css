@@ -32,9 +32,3 @@
 
 .camera-debug{margin:6px 0 0;font:600 11px/1.4 monospace;color:var(--ink);opacity:.8}
 
-.swat-meter{display:flex;align-items:center;gap:10px;margin:6px 0 0}
-.swat-bar{position:relative;flex:1;height:14px;border-radius:99px;background:rgba(255,255,255,.12);overflow:hidden}
-.swat-bar i{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:99px;background:linear-gradient(90deg,#9ed834,#d9f965);transition:width .06s linear}
-.swat-bar i.hit{background:linear-gradient(90deg,var(--gold),var(--danger))}
-.swat-mark{position:absolute;left:28%;top:-2px;bottom:-2px;width:2px;background:#fff;opacity:.85}
-#swat-text{font:700 12px monospace;min-width:150px;color:var(--ink)}

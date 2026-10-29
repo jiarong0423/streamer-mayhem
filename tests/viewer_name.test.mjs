@@ -8,7 +8,7 @@ test('VIEWER-01 display names lose control, zero-width and tag characters and ar
   assert.equal(cleanViewerName('Alice'),'Alice');
   assert.equal(cleanViewerName('Bo​b\u0007\u{e0041}'),'Bob');
   assert.equal(cleanViewerName('x'.repeat(40)).length,20);
-  assert.equal(cleanViewerName('\u{1F600}'.repeat(30)).length,40,'20 emoji, each two UTF-16 units');
+  assert.equal(cleanViewerName('A'+'\u{1F600}'.repeat(30)).length,39,'A plus 19 emoji, each two UTF-16 units');   // a name needs a letter or digit now (RED-05)
   assert.equal(cleanViewerName(undefined),'');assert.equal(cleanViewerName(42),'');
 });
 test('VIEWER-02 the adapter hands the cleaned name to the delivery callback, and a drop is still a DROP',()=>{

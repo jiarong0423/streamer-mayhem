@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://id.twitch.tv https://api.twitch.tv wss://eventsub.wss.twitch.tv wss://irc-ws.chat.twitch.tv http://127.0.0.1:8080 ws://127.0.0.1:8080 http://127.0.0.1:8091 ws://127.0.0.1:8091; object-src 'none'; base-uri 'none'">
-  <meta name="description" content="Streamer Mayhem: Twitch chat attacks, the streamer dodges.">
+  <meta name="description" content="Streamer Mayhem: Twitch chat shoots balls and throws pies, the streamer catches the balls and dodges the pies.">
   <title>Streamer Mayhem — Chat vs. Streamer</title>
   <link rel="stylesheet" href="./styles.css">
   <link rel="stylesheet" href="./ux.css">
@@ -14,14 +14,14 @@
     <header class="topbar">
       <a class="brand" href="#top" aria-label="Streamer Mayhem home"><span class="brand-mark">M<span>✦</span></span><span>STREAMER<br><b>MAYHEM</b></span></a>
       <nav aria-label="Main"><a class="active" href="#arena-section">Arena</a><a href="#how-to">How to play</a></nav>
-      <div class="top-meta"><span class="status-dot"></span> <span data-pose-label>SYNTHETIC POSE INPUT</span> <span class="meta-slash">/</span> LIVE TWITCH CHAT</div>
+      <div class="top-meta"><span class="status-dot"></span> <span data-pose-label>SYNTHETIC POSE INPUT</span> <span class="meta-slash">/</span> TWITCH CHAT</div>
     </header>
 
     <main id="top">
       <section class="intro" aria-labelledby="page-title">
         <div class="intro-copy"><div class="eyebrow"><span class="tiny-square"></span> THE CHAT IS IN CONTROL <span class="line"></span> EPISODE 01</div>
           <h1 id="page-title">YOUR CHAT.<br><em>YOUR NEXT MOVE.</em></h1>
-          <p>Chat drops the gold and the bombs.<br>The streamer catches the gold and dodges the rest, just by leaning.</p>
+          <p>Chat shoots the balls and throws the pies.<br>The streamer moves the hoop to catch the balls and dodges the pies, just by leaning.</p>
         </div>
         <div class="intro-note"><span class="note-symbol">↘</span><span>BUILT FOR<br><b>UNPREDICTABLE<br>LIVE MOMENTS.</b></span></div>
       </section>
@@ -31,7 +31,7 @@
           <div class="section-head"><div><span class="section-index">01 / THE ARENA</span><h2>The Arena</h2></div><span class="simulation-badge"><i></i> Synthetic input</span></div>
           <div class="arena-frame">
             <div class="arena-toolbar"><div><span class="arena-icon">✳</span> STREAMER MAYHEM <span class="toolbar-muted">/ ROUND 01</span></div><div class="toolbar-mode"><span class="live-dot"></span> SIMULATED<button id="fullscreen" class="fullscreen-button" type="button">Full screen</button></div></div>
-            <div class="canvas-wrap"><canvas id="arena" width="1920" height="1080" tabindex="0" aria-label="Arena: click a position or use the arrow keys to move the synthetic character"></canvas></div><div class="canvas-caption"><span>MOVE TO DODGE</span><span>The character uses synthetic coordinates</span></div>
+            <div class="canvas-wrap"><canvas id="arena" width="1920" height="1080" tabindex="0" aria-label="Arena: click a position or use the arrow keys to move the synthetic character"></canvas></div><div class="canvas-caption"><span>MOVE THE HOOP</span><span>The character uses synthetic coordinates</span></div>
             <div class="arena-footer"><div class="footer-hint"><span class="keyboard-icon">↗</span><span><b>Click the arena</b> or use the arrow keys to move</span></div><div class="movement" aria-label="Move character"><button type="button" data-move="left" aria-label="Move left">←</button><button type="button" data-move="up" aria-label="Move up">↑</button><button type="button" data-move="down" aria-label="Move down">↓</button><button type="button" data-move="right" aria-label="Move right">→</button></div><button id="reset" class="reset-button" type="button">↻ <span>Restart</span></button></div>
           </div>
           <div class="stats" aria-label="Game stats"><div class="stat"><span>STATUS</span><strong id="game-status" role="status">Ready</strong></div><div class="stat"><span>HEALTH</span><strong><span id="health">100</span><small> / 100</small></strong><div class="health-track"><i id="health-fill"></i></div></div><div class="stat"><span>SCORE</span><strong id="score">000</strong></div><div class="stat"><span>LAST MOVE</span><strong id="last-result">—</strong></div></div>
@@ -47,15 +47,15 @@
                 <button id="sound-toggle" class="ux-sound-button" type="button" aria-pressed="false" data-state="MUTED">🔇 Sound off (click to turn on)</button>
                 <label class="ux-volume">Volume <input id="sound-volume" type="range" min="0" max="100" step="1" value="100" aria-label="Sound volume"></label>
               </div>
-              <p class="ux-start-hint">Turns on your camera, counts down 3-2-1, then the gold and bombs start to fall. Lean left and right to catch the gold. Esc stops.</p>
+              <p class="ux-start-hint">Turns on your camera, counts down 3-2-1, then the balls and pies start to fly. Lean left and right to put the hoop under the balls. Esc stops.</p>
               <video id="camera-video" playsinline muted style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"></video>
             </div>
             <details class="provider-settings ux-more" id="all-controls"><summary>More options</summary>
-            <div class="chat-card-head"><div><span class="chat-icon">#</span><div><b>Your chat</b><small>Connect, then dodge</small></div></div><span id="connection-badge" class="online-badge">Simulated connection</span></div>
+            <div class="chat-card-head"><div><span class="chat-icon">#</span><div><b>Your chat</b><small>Connect, then play</small></div></div><span id="connection-badge" class="online-badge">Simulated connection</span></div>
             <div class="card-rule"></div>
-            <ol class="card-description" id="go-live-steps"><li>Turn on camera tracking and stand so your head and shoulders are in view.</li><li>Type your channel name below and press Connect.</li><li>Add the OBS overlay link (below) as a Browser Source.</li><li>Ask chat to type <code>!throw 1</code> to <code>!throw 9</code>, then dodge.</li></ol>
-            <details class="provider-settings" open><summary>Camera body tracking</summary>
-              <p>Tracks your body with your camera, inside this browser tab. No video is uploaded. Keep the camera still and stand alone in view.</p>
+            <ol class="card-description" id="go-live-steps"><li>Turn on camera tracking and keep your face in view.</li><li>Type your channel name below and press Connect.</li><li>Add the OBS overlay link (below) as a Browser Source.</li><li>Ask chat to type <code>!drop 1</code> to <code>!drop 3</code> (a ball) or <code>!pie 1</code> to <code>!pie 3</code> (a pie), then catch the balls and dodge the pies.</li></ol>
+            <details class="provider-settings" open><summary>Camera tracking</summary>
+              <p>Tracks your face (or your body in Body mode) with your camera, inside this browser tab. No video is uploaded. Keep the camera still and sit alone in view.</p>
               <label>Tracking <select id="camera-kind"><option value="face">Face (works close up)</option><option value="pose">Body (needs shoulders in view)</option></select></label>
               <label>Camera <select id="camera-facing"><option value="user">Front camera (mirrored)</option><option value="environment">Rear camera</option></select></label>
               <div class="provider-actions"><button id="camera-toggle" type="button">Turn on camera tracking</button></div>
@@ -65,37 +65,40 @@
               <div class="provider-actions"><button id="camera-center" type="button" disabled>Center me (small-range play)</button><button id="camera-center-reset" type="button" disabled>Reset view</button></div>
               <p id="camera-status" role="status">Camera off. Keyboard or mouse input is used.</p>
               <p id="camera-debug" class="camera-debug" hidden></p>
-              <label class="check-row"><input id="swat-test" type="checkbox"> Swat sensor test: slap or clap in front of your face and watch the bar</label>
-              <div id="swat-meter" class="swat-meter" hidden><div class="swat-bar"><i id="swat-fill"></i><b class="swat-mark" title="needs this much for a swat"></b></div><span id="swat-text">0.00</span></div>
             </details>
 
             <details class="provider-settings" open><summary>Connect to Twitch chat without login</summary>
-              <p>Reads a public channel's chat anonymously (read-only). No account, token or Twitch application is needed. Chat commands such as <code>!throw 5</code> trigger attacks.</p>
+              <p>Reads a public channel's chat anonymously (read-only). No account, token or Twitch application is needed. Chat commands such as <code>!drop 2</code> or <code>!pie 1</code> send a ball or a pie. Anonymous reading is not documented by Twitch; use it on your own channel or one whose owner agreed.</p>
               <label>Channel name <input id="irc-channel" maxlength="26" autocomplete="off" placeholder="your_channel"></label>
               <div class="provider-actions"><button id="irc-start" type="button">Connect without login (read-only)</button></div>
               <p id="irc-status" role="status">Not connected.</p>
             </details>
             <details class="provider-settings" open><summary>OBS overlay</summary>
-              <div class="mini-actions"><button id="overlay-toggle" type="button">Enable overlay sync</button></div><p><a id="overlay-link" target="_blank" rel="noopener">Open transparent overlay</a></p><p id="overlay-hint">Add the overlay link as an OBS Browser Source. Keep this controller page open while syncing.</p>
+              <div class="mini-actions"><button id="overlay-toggle" type="button">Enable overlay sync</button></div>
+              <label class="check-row"><input id="overlay-auto" type="checkbox"> Turn overlay sync on automatically when this page loads (the same link is kept)</label>
+              <p><a id="overlay-link" target="_blank" rel="noopener">Open transparent overlay</a></p>
+              <p id="overlay-hint">Add the overlay link as an OBS Browser Source. Keep this controller page open and visible while syncing.</p>
+              <p id="overlay-note" class="card-description" role="status"></p>
+              <p id="obs-align" class="card-description" role="status">OBS camera source setup appears here once the camera is on.</p>
             </details>
-            <div class="card-label"><span>Games</span><small>ONE AT A TIME</small></div>
-            <div class="mini-actions"><button id="synthetic-cross" type="button">✳ Cross Inferno</button><button id="synthetic-freeze" type="button">Freeze</button><button id="synthetic-mosquito" type="button">Mosquito</button><button id="synthetic-lava" type="button">Lava</button></div>
+            <div class="card-label"><span>Games</span><small>LEGACY MODES · ONE AT A TIME</small></div>
+            <div class="mini-actions"><button id="synthetic-cross" type="button">✳ Cross Inferno</button><button id="synthetic-freeze" type="button">Freeze</button><button id="synthetic-lava" type="button">Lava</button></div>
             <p id="challenge-status" class="command-feedback" role="status">Pick a game to start; one challenge at a time.</p>
-            <p class="card-description">Cross Inferno: after 1.5 s the cross cells are hit; move to a corner (1, 3, 7, 9). A hit costs 15 HP, a dodge scores 25.</p>
+            <p class="card-description">Legacy extra mode. Cross Inferno: after 1.5 s the cross cells are hit; move to a corner (1, 3, 7, 9). A hit costs 15 HP, a dodge scores 25.</p>
             <div class="mini-actions"><button id="pause" type="button">Ⅱ Pause game</button></div>
             <details class="provider-settings" id="more-options"><summary>More options (practice mode, OAuth, test tools)</summary>
             <details class="provider-settings" id="practice"><summary>Practice without chat (audience simulator)</summary>
-            <div class="card-label"><span>Pick a target cell</span><small>QUICK THROW</small></div>
-            <p class="card-description">Choose a number, then dodge after the warning.</p>
+            <div class="card-label"><span>Legacy 3x3 grid</span><small>EXTRA MODE (!throw)</small></div>
+            <p class="card-description">Legacy extra mode: choose a number, then dodge after the warning. For the basketball game type !drop 1-3 or !pie 1-3 below.</p>
             <div id="throw-grid" class="throw-grid" aria-label="Simulated viewer throw"><button type="button" data-throw="1">1</button><button type="button" data-throw="2">2</button><button type="button" data-throw="3">3</button><button type="button" data-throw="4">4</button><button type="button" data-throw="5">5</button><button type="button" data-throw="6">6</button><button type="button" data-throw="7">7</button><button type="button" data-throw="8">8</button><button type="button" data-throw="9">9</button></div>
             <div class="command-or"><span></span> OR TYPE A COMMAND <span></span></div>
-            <form id="chat-form" class="chat-form"><label for="chat-input" class="sr-only">Enter a simulated chat command</label><span>›</span><input id="chat-input" maxlength="100" placeholder="!throw 5" autocomplete="off"><button type="submit" aria-label="Send simulated command">↗</button></form>
-            <div class="mini-actions"><button id="face-mosquito" type="button">Send a mosquito at my face</button><button id="swat" type="button">Swat (no camera)</button></div>
-            <label class="check-row"><input id="auto-drops" type="checkbox"> Auto drops (random gold items and bombs, gets harder)</label>
-            <p id="command-feedback" class="command-feedback" role="status">Try !throw 1–9, !drop 1–3, !bomb 1–3, !mosquito, !freeze or !lava</p>
+            <form id="chat-form" class="chat-form"><label for="chat-input" class="sr-only">Enter a simulated chat command</label><span>›</span><input id="chat-input" maxlength="100" placeholder="!drop 2" autocomplete="off"><button type="submit" aria-label="Send simulated command">↗</button></form>
+            <label class="check-row"><input id="speak-names" type="checkbox"> Read supporter names aloud (browser voice, off by default)</label>
+            <label class="check-row"><input id="auto-drops" type="checkbox"> Auto drops (random balls and pies, gets harder)</label>
+            <p id="command-feedback" class="command-feedback" role="status">Try !drop 1–3 (a ball) or !pie 1–3 (a pie)</p>
             </details>
             <details class="provider-settings"><summary>Advanced: connect with your own Twitch app (OAuth + EventSub)</summary>
-              <p>Enter your own Twitch application details. They stay in this page's memory only. Register <code>http://localhost:4173/oauth-callback.html</code> as the OAuth redirect URL (Twitch accepts http only for localhost) and open this page at <code>http://localhost:4173/</code>.</p>
+              <p>Enter your own Twitch application details. They stay in this page's memory only. Register <code>http://localhost:4173/oauth-callback.html</code> as the OAuth redirect URL (the tested setup uses plain http on localhost) and open this page at <code>http://localhost:4173/</code>.</p>
               <form id="provider-form">
                 <label>Client ID <input id="provider-client-id" maxlength="128" autocomplete="off" required></label>
                 <label>Broadcaster channel ID (numeric) <input id="provider-channel-id" inputmode="numeric" maxlength="20" autocomplete="off" required></label>
@@ -111,7 +114,7 @@
                 <label>Click / drag in the arena controls <select id="pointer-control"><option value="body">Body position</option><option value="leftWrist">Left wrist (blue)</option><option value="rightWrist">Right wrist (pink)</option></select></label>
                 <div class="mini-actions"><button id="synthetic-clap" type="button">Clap to wrist midpoint</button><button id="hip-stand" type="button">Stand (hip up)</button><button id="hip-crouch" type="button">Crouch (hip down)</button></div>
                 <div class="joint-toggles"><label><input id="elbow-known" type="checkbox" checked> Elbow visible</label><label><input id="wrist-known" type="checkbox" checked> Wrist visible</label><label><input id="hip-known" type="checkbox" checked> Hip visible</label></div>
-                <p class="card-description">Freeze: pull in your elbows during the 1.5 s yellow, hold through the 2.5 s red; success +100, failure −12. Mosquito: select a wrist, then drag fast onto the mosquito or clap on it; +50 within 10 s, −5 on timeout. Lava: raise the hip within 8 s to stay above the surface; burns cost 5 HP per second, a clean finish +75. These are synthetic coordinate controls.</p>
+                <p class="card-description">Freeze: pull in your elbows during the 1.5 s yellow, hold through the 2.5 s red; success +100, failure −12. Lava: raise the hip within 8 s to stay above the surface; burns cost 5 HP per second, a clean finish +75. These are synthetic coordinate controls.</p>
               </div>
               <div class="mini-actions"><button id="tracking" type="button">◎ Simulate tracking loss</button><button id="connection" type="button">↯ Simulate disconnect</button></div>
               <div class="mini-actions"><button id="frame-source-toggle" type="button">Simulate frame interruption</button></div><p id="frame-source-status" class="command-feedback" role="status">Synthetic frames updating</p>
@@ -147,9 +150,9 @@
         </aside>
       </section>
 
-      <section class="how-to" id="how-to"><div class="how-title"><span class="section-index">03 / THE RULES</span><h2>Ready to play?</h2><p>Give chat a button.<br>Give the streamer half a second.</p></div><div class="how-step"><span>01</span><b>Chat attacks</b><p>Type <code>!throw 1</code> to <code>!throw 9</code> to pick the target cell.</p></div><div class="how-step"><span>02</span><b>Dodge the red warning</b><p>Click the arena or use the arrow keys to move to another cell.</p></div><div class="how-step"><span>03</span><b>Survive the round</b><p>Dodges score, hits cost HP. Press Restart to play again.</p></div></section>
+      <section class="how-to" id="how-to"><div class="how-title"><span class="section-index">03 / THE RULES</span><h2>Ready to play?</h2><p>Give chat a button.<br>Give the streamer half a second.</p></div><div class="how-step"><span>01</span><b>Chat shoots</b><p>Type <code>!drop 1</code> to <code>!drop 3</code> to send a ball (middle lane = two-pointer, 20 points; left and right lanes = three-pointers, 30 points) or <code>!pie 1</code> to <code>!pie 3</code> to throw a pie.</p></div><div class="how-step"><span>02</span><b>Catch the balls, dodge the pies</b><p>Lean to put the hoop under the ball; without a camera, click the arena or use the arrow keys. A pie flashes its lane first, then appears: step out of that lane.</p></div><div class="how-step"><span>03</span><b>Finish the 75 s round</b><p>Catches score, a caught pie costs 25 points and a dodged pie gives 10. Grades: S 1400, A 900, B 700. Press Restart to play again.</p></div></section>
     </main>
-    <footer><span>STREAMER MAYHEM <b>✦</b> CHAT VS STREAMER</span><span><span data-pose-label>SYNTHETIC POSE INPUT</span> · LIVE TWITCH CHAT</span><a href="#top">BACK TO TOP ↑</a></footer>
+    <footer><span>STREAMER MAYHEM <b>✦</b> CHAT VS STREAMER</span><span><span data-pose-label>SYNTHETIC POSE INPUT</span> · TWITCH CHAT</span><a href="#top">BACK TO TOP ↑</a></footer>
   </div>
   <script type="module" src="./app.mjs"></script>
 </body>

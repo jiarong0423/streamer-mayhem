@@ -9,7 +9,7 @@ const routes=new Map([
   ['/tests/overlay_page.html',['tests/overlay_page.html','text/html; charset=utf-8']],
   ['/overlay.html',['dist/overlay.html','text/html; charset=utf-8']],
   ['/overlay.css',['dist/overlay.css','text/css; charset=utf-8']],
-  ...['overlay.mjs','overlay_protocol.mjs','camera_geometry.mjs','matrix.mjs','pose_freeze.mjs','action_games.mjs','matrix_view.mjs','drop_lanes.mjs','art.mjs'].map(name=>[`/${name}`,[`dist/${name}`,'text/javascript; charset=utf-8']]),
+  ...['overlay.mjs','overlay_protocol.mjs','camera_geometry.mjs','matrix.mjs','pose_freeze.mjs','action_games.mjs','matrix_view.mjs','drop_lanes.mjs','art.mjs','overlay_scene.mjs','arena_draw.mjs','ticker.mjs','eventsub_adapter.mjs'].map(name=>[`/${name}`,[`dist/${name}`,'text/javascript; charset=utf-8']]),
   ['/tests/real_canvas.html',['tests/real_canvas.html','text/html; charset=utf-8']],
   ['/tests/calibration_canvas.html',['tests/calibration_canvas.html','text/html; charset=utf-8']],
   ['/dist/camera_geometry.mjs',['dist/camera_geometry.mjs','text/javascript; charset=utf-8']],

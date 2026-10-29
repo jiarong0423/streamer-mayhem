@@ -1,6 +1,7 @@
 import {PoseFreeze} from './pose_freeze.mjs';
 import {ActionGames} from './action_games.mjs';
-import {dropCaught} from './drop_lanes.mjs';
+import {dropCaught,dropCaughtAt,dropLandX,dropPoints,dropTarget} from './drop_lanes.mjs';
+export const PIE_THREAT_DISTANCE=.30;   // a dodged pie only scores when the streamer was within this x distance of where it landed (otherwise it was never a threat)
 const finite = Number.isFinite;
 export const CROSS_CELLS = Object.freeze([2,4,5,6,8]);
 
@@ -34,23 +35,20 @@ export function parseDropCommand(text) {
   const match = /^!drop\s+([1-3])$/i.exec(cleanCommand(text));
   return match ? Number(match[1]) : null;
 }
-// `!mosquito` sends a mosquito after the streamer's face (the flight itself lives in face_mosquito.mjs).
-export function parseMosquitoCommand(text) {
-  if (typeof text !== 'string' || text.length > 100) return false;
-  return /^!mosquito$/i.test(cleanCommand(text));
-}
 // `!bomb 1|2|3` drops a bomb on the same targets: the streamer should keep the catcher away from it.
 export function parseBombCommand(text) {
   if (typeof text !== 'string' || text.length > 100) return null;
-  const match = /^!bomb\s+([1-3])$/i.exec(cleanCommand(text));
+  const match = /^!(?:bomb|pie)\s+([1-3])$/i.exec(cleanCommand(text));
   return match ? Number(match[1]) : null;
 }
 export const dropCells = column => [column, column + 3, column + 6];
 
-// Round grade from the final score: S 1600, A 1000, B 500, below that no grade (null).
+// Round grade from the final score: S 1400, A 900, B 700, below that no grade (null).
 export function gradeFor(score) {
   if (!finite(score)) return null;
-  return score >= 1600 ? 'S' : score >= 1000 ? 'A' : score >= 500 ? 'B' : null;
+  // Theme: S 1400, A 900, B 700. The original 1600/1000/500 were set for the old 25-point catches; with 20/30-point balls and a slower round a bot that
+  // catches everything averages about 1700, so 1400 keeps S for a near-perfect round without making it a perfect-score-only grade.
+  return score >= 1400 ? 'S' : score >= 900 ? 'A' : score >= 700 ? 'B' : null;
 }
 // Combo multiplier for catches and bomb dodges: x1.5 from a streak of 5, x2 from 10.
 export const comboMultiplier = n => !finite(n) ? 1 : n >= 10 ? 2 : n >= 5 ? 1.5 : 1;
@@ -60,13 +58,13 @@ export class MatrixGame {
   constructor({ clock = () => performance.now(), onEvent = () => {}, options = {} } = {}) {
     this.clock = clock;
     this.onEvent = onEvent;
-    this.config = { maxAge: 250, confidence: .55, warning: 500, crossWarning: 1500, dropFall: 2500, dropScore: 25, bombPenalty: 25, avoidScore: 10, faceSwatScore: 50, faceDodgeScore: 25, faceBiteDamage: 5, faceBitePenalty: 25, faceMosquitoCooldown: 20000, recovery: 1000,
+    this.config = { maxAge: 250, confidence: .55, warning: 500, crossWarning: 1500, dropFall: 2500, dropScore: 25, bombPenalty: 25, avoidScore: 10, landJitter: 0, recovery: 1000,
       actorCooldown: 3000, globalCooldown: 400, maxAttacks: 8, ringTime: 1000,
       ringDamage: 10, damage: 15, dodgeScore: 25, freezeDamage:12, freezeScore:100, freezeCooldown:8000,
       mosquitoDamage:5,mosquitoScore:50,lavaDamage:5,lavaScore:75,actionCooldown:8000,
       dedupeTtl: 600000, dedupeLimit: 2000, maxResults: 200,
       ring: { left: .04, right: .96, top: .04, bottom: .96 }, ...options };
-    for (const key of ['maxAge','warning','crossWarning','dropFall','dropScore','bombPenalty','avoidScore','faceSwatScore','faceDodgeScore','faceBiteDamage','faceBitePenalty','faceMosquitoCooldown','recovery','actorCooldown','globalCooldown','ringTime','dedupeTtl']) {
+    for (const key of ['landJitter','maxAge','warning','crossWarning','dropFall','dropScore','bombPenalty','avoidScore','recovery','actorCooldown','globalCooldown','ringTime','dedupeTtl']) {
       if (!finite(this.config[key]) || this.config[key] < 0) throw new RangeError(`Invalid ${key}`);
     }
     for (const key of ['maxAttacks','dedupeLimit','maxResults']) {
@@ -90,7 +88,6 @@ export class MatrixGame {
     this.outSince = null; this.outPenalized = false; this.recoveryUntil = null;
     // Resetting a round must not make an already-delivered chat message new again.
     this.notifications ??= new Map(); this.messages ??= new Map(); this.actors = new Map();
-    this.faceMosquitoBusy = false; this.lastFaceMosquito = -Infinity; this.faceMosquitoSerial = this.faceMosquitoSerial ?? 0;
     this.lastGlobal = -Infinity; this.lastFreeze=-Infinity;this.lastActions=new Map(); this.pausedFrom = null;this.freeze.reset();this.actionGame.reset();
   }
 
@@ -162,7 +159,6 @@ export class MatrixGame {
   receiveChat(event) {
     const drop = parseDropCommand(event?.text);
     if (drop !== null) return this.#receiveAttack(event, {cell:drop + 3, kind:'DROP', cells:dropCells(drop), warning:this.config.dropFall});
-    if (parseMosquitoCommand(event?.text)) return this.#receiveAttack(event, {kind:'FACE_MOSQUITO'});
     const bomb = parseBombCommand(event?.text);
     if (bomb !== null) return this.#receiveAttack(event, {cell:bomb + 3, kind:'DROP', variant:'BOMB', cells:dropCells(bomb), warning:this.config.dropFall});
     const cell = parseMatrixCommand(event?.text);
@@ -170,9 +166,9 @@ export class MatrixGame {
   }
 
   // Automatic waves of drops (local game logic, not chat): `fall` is this item's own fall time in ms, `variant` is 'BOMB' or omitted for a gold item.
-  receiveWaveDrop(event,{column,variant,fall}={}) {
-    if (![1,2,3].includes(column) || !Number.isFinite(fall) || fall < 100 || fall > 10000 || (variant !== undefined && variant !== 'BOMB')) return { accepted:false, reason:'INVALID_COMMAND' };
-    return this.#receiveAttack(event, {cell:column + 3, kind:'DROP', ...(variant ? {variant} : {}), cells:dropCells(column), warning:fall, local:true});
+  receiveWaveDrop(event,{column,variant,fall,label}={}) {
+    if (![1,2,3].includes(column) || !Number.isFinite(fall) || fall < 100 || fall > 10000 || (variant !== undefined && variant !== 'BOMB') || (label !== undefined && typeof label !== 'string')) return { accepted:false, reason:'INVALID_COMMAND' };
+    return this.#receiveAttack(event, {cell:column + 3, kind:'DROP', ...(variant ? {variant} : {}), ...(label ? {label} : {}), cells:dropCells(column), warning:fall, local:true});
   }
 
   // Explicit local simulator action; chat/Bits transports never dispatch this method.
@@ -207,18 +203,13 @@ export class MatrixGame {
     if(isFreeze&&this.gameTime-this.lastFreeze<this.config.freezeCooldown)return {accepted:false,reason:'FREEZE_COOLDOWN'};
     if(isAction&&!(raising?this.actionGame.canRaise(this.latestFrame,this.wall):this.actionGame.canStart(target.kind,this.latestFrame,this.wall)))return {accepted:false,reason:'POSE_UNKNOWN'};
     if(isAction&&!raising&&this.gameTime-(this.lastActions.get(target.kind)??-Infinity)<this.config.actionCooldown)return {accepted:false,reason:'GAME_COOLDOWN'};
-    if (target.kind === 'FACE_MOSQUITO' && this.faceMosquitoBusy) return { accepted:false, reason:'MODE_BUSY' };
-    if (target.kind === 'FACE_MOSQUITO' && this.gameTime - this.lastFaceMosquito < this.config.faceMosquitoCooldown) return { accepted:false, reason:'GAME_COOLDOWN' };
+    if (target.kind==='DROP' && this.attacks.some(a=>a.kind==='DROP' && (a.variant==='BOMB')!==(target.variant==='BOMB'))) return { accepted:false, reason:'MODE_BUSY' };   // theme: balls and pies are staggered, never together
     if (this.attacks.length >= this.config.maxAttacks) return { accepted:false, reason:'QUEUE_FULL' };
     if (this.gameTime - (this.actors.get(event.actorId) ?? -Infinity) < this.config.actorCooldown) return { accepted:false, reason:'ACTOR_COOLDOWN' };
     if (this.gameTime - this.lastGlobal < this.config.globalCooldown) return { accepted:false, reason:'GLOBAL_COOLDOWN' };
     this.actors.set(event.actorId,this.gameTime); this.lastGlobal = this.gameTime;
     // Bound actor state independently from untrusted chat volume.
     if (this.actors.size > this.config.dedupeLimit) this.actors.delete(this.actors.keys().next().value);
-    if(target.kind==='FACE_MOSQUITO'){
-      this.lastFaceMosquito=this.gameTime;
-      const detail={eventId:event.messageId,kind:'FACE_MOSQUITO'};this.emit('faceMosquito',detail);return {accepted:true,...detail};
-    }
     if(isFreeze){
       this.freeze.start({eventId:event.messageId,now:this.wall,frame:this.latestFrame});
       this.lastFreeze=this.gameTime;this.outSince=null;this.outPenalized=false;
@@ -230,10 +221,15 @@ export class MatrixGame {
       this.outSince=null;this.outPenalized=false;
       const detail={eventId:event.messageId,kind:target.kind,raised:raising};this.emit(raising?'lavaRaise':'challengeStart',detail);return {accepted:true,...detail};
     }
+    // Star ball (theme): a ball carrying a supporter's name, from a wave drop with a label or from a command that came with a cheer. Never on a pie.
+    const rawLabel = target.kind === 'DROP' && target.variant !== 'BOMB' ? (typeof target.label === 'string' ? target.label : (event.cheerBits > 0 && typeof event.viewer === 'string' ? event.viewer : '')) : '';
+    const label = rawLabel.replace(/[\u0000-\u001f\u007f-\u009f]/g,'').trim().slice(0,20);
     const attack = { eventId:event.messageId, notificationId:event.notificationId, actorId:event.actorId,
       cell, start:this.gameTime, due:this.gameTime + target.warning,
-      ...(target.cells ? {kind:target.kind,cells:[...target.cells]} : {}), ...(target.variant ? {variant:target.variant} : {}) };
-    const detail = {eventId:attack.eventId,cell,...(target.cells ? {kind:target.kind,cells:[...target.cells]} : {}),...(target.variant ? {variant:target.variant} : {})};
+      ...(target.cells ? {kind:target.kind,cells:[...target.cells]} : {}), ...(target.variant ? {variant:target.variant} : {}),
+      ...(label ? {label} : {}),
+      ...(target.kind === 'DROP' && this.config.landJitter > 0 ? {landX:dropLandX(cell - 3, event.messageId, this.config.landJitter)} : {}) };
+    const detail = {eventId:attack.eventId,cell,...(label ? {label} : {}),...(attack.landX !== undefined ? {landX:attack.landX} : {}),...(target.cells ? {kind:target.kind,cells:[...target.cells]} : {}),...(target.variant ? {variant:target.variant} : {})};
     this.attacks.push(attack); this.emit('warning', detail);
     return { accepted:true, ...detail };
   }
@@ -245,26 +241,29 @@ export class MatrixGame {
     // A drop is the reverse of an attack: catching it scores, missing it costs nothing. Only the left/right position counts,
     // so leaving the window vertically does not make a drop unknown; only a missing or low-confidence point does.
     // The catcher follows the streamer's x; the drop is caught when the catcher covers the item's target x (see drop_lanes.mjs).
-    const caught = attack.kind === 'DROP' && point ? dropCaught(point.x, attack.cell - 3) : null;
+    const caught = attack.kind === 'DROP' && point ? (attack.landX !== undefined ? dropCaughtAt(point.x, attack.landX) : dropCaught(point.x, attack.cell - 3)) : null;
     const inCells = attack.kind === 'DROP' ? caught === true : current !== null && (attack.cells ?? [attack.cell]).includes(current);
     const known = attack.kind === 'DROP' ? caught !== null : current !== null;
     const bomb = attack.variant === 'BOMB';
     // Gold item: catching scores, missing costs nothing. Bomb: catching costs points, avoiding it earns a few.
     const outcome = !known ? 'UNKNOWN' : attack.kind === 'DROP' ? (bomb ? (inCells ? 'BOMB' : 'AVOID') : (inCells ? 'CATCH' : 'MISS')) : inCells ? 'HIT' : 'DODGE';
     const hpBefore = this.hp, scoreBefore = this.score;
+    // A dodged pie is only worth points when it was a real threat: standing in a far corner while helpers send pies must not farm score or combo.
+    const pieX = attack.landX !== undefined ? attack.landX : dropTarget(attack.cell - 3);
+    const threat = outcome === 'AVOID' ? (point !== null && Number.isFinite(pieX) && Math.abs(point.x - pieX) <= PIE_THREAT_DISTANCE + 1e-9) : true;
     if (outcome === 'HIT') this.hp = Math.max(0,this.hp-this.config.damage);
     if (outcome === 'DODGE') this.score += this.config.dodgeScore;
     // Combo: consecutive CATCH or AVOID build it (x1.5 at 5, x2 at 10, applied to those two scores only); a caught bomb, or three gold items missed in a row, ends it.
     let multiplier = 1;
-    if (outcome === 'CATCH' || outcome === 'AVOID') { this.combo++; multiplier = comboMultiplier(this.combo); }
-    if (outcome === 'CATCH') { this.missStreak = 0; this.score += Math.round(this.config.dropScore * multiplier); }
-    if (outcome === 'AVOID') this.score += Math.round(this.config.avoidScore * multiplier);
+    if (outcome === 'CATCH' || (outcome === 'AVOID' && threat)) { this.combo++; multiplier = comboMultiplier(this.combo); }
+    if (outcome === 'CATCH') { this.missStreak = 0; this.score += Math.round((attack.landX !== undefined ? dropPoints(attack.landX) * 10 : this.config.dropScore) * multiplier); }
+    if (outcome === 'AVOID' && threat) this.score += Math.round(this.config.avoidScore * multiplier);
     if (outcome === 'BOMB') { this.score = Math.max(0, this.score - this.config.bombPenalty); this.combo = 0; this.missStreak = 0; }
     if (outcome === 'MISS' && ++this.missStreak >= MISS_LIMIT) { this.combo = 0; this.missStreak = 0; }
     const result = { eventId:attack.eventId, cell:attack.cell,
       ...(attack.cells ? {kind:attack.kind,cells:[...attack.cells]} : {}), outcome, sampledFrameId:frame?.frameId ?? null,
       sampledAt:atWall, hpDelta:this.hp-hpBefore, scoreDelta:this.score-scoreBefore,
-      ...(attack.kind === 'DROP' ? {sampledX:point ? point.x : null, caught, ...(bomb ? {variant:'BOMB'} : {}), combo:this.combo, multiplier} : {}) };
+      ...(attack.kind === 'DROP' ? {sampledX:point ? point.x : null, caught, ...(attack.landX !== undefined ? {landX:attack.landX,points:dropPoints(attack.landX)} : {}), ...(attack.label ? {label:attack.label} : {}), ...(bomb ? {variant:'BOMB'} : {}), combo:this.combo, multiplier} : {}) };
     this.recordResult(result);
     if (this.hp === 0) { this.mode='ROUND_END'; this.emit('status',{status:'ROUND_END'}); }
     return result;
@@ -309,24 +308,6 @@ export class MatrixGame {
     if(this.hp===0&&this.mode!=='ROUND_END'){
       this.mode='ROUND_END';this.emit('status',{status:'ROUND_END'});this.cancelPending('ROUND_END',this.wall);
     }
-  }
-
-  // The face mosquito flies in the page (face_mosquito.mjs); the page tells the core when it is on screen and what came of it.
-  setFaceMosquitoBusy(busy) { this.faceMosquitoBusy = Boolean(busy); }
-  // A !mosquito that was accepted but could not start (no face yet) should not use up the cooldown.
-  refundFaceMosquito() { this.lastFaceMosquito = -Infinity; }
-  // SWAT +faceSwatScore, DODGE +faceDodgeScore (it gave up), BITE -faceBiteDamage hp and -faceBitePenalty points, UNKNOWN (face lost / cancelled) nothing.
-  settleFaceMosquito({outcome,reason,approaches=1}={}) {
-    if (!['SWAT','DODGE','BITE','UNKNOWN'].includes(outcome) || (this.mode !== 'PLAYING' && this.mode !== 'RECOVERING' && this.mode !== 'TRACKING_LOST')) return null;
-    const hpBefore = this.hp, scoreBefore = this.score;
-    if (outcome === 'SWAT') this.score += this.config.faceSwatScore;
-    if (outcome === 'DODGE') this.score += this.config.faceDodgeScore;
-    if (outcome === 'BITE') { this.hp = Math.max(0, this.hp - this.config.faceBiteDamage); this.score = Math.max(0, this.score - this.config.faceBitePenalty); this.combo = 0; this.missStreak = 0; }
-    const result = { eventId:`face-mosquito-${++this.faceMosquitoSerial}`, cell:5, kind:'FACE_MOSQUITO', outcome, reason:String(reason ?? ''), approaches,
-      sampledFrameId:null, sampledAt:this.wall, hpDelta:this.hp-hpBefore, scoreDelta:this.score-scoreBefore };
-    this.recordResult(result);
-    if (this.hp === 0) { this.mode='ROUND_END'; this.emit('status',{status:'ROUND_END'}); }
-    return result;
   }
 
   cancelPending(reason, atWall) {

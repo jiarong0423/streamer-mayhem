@@ -13,8 +13,8 @@ const session='b'.repeat(32),geometry=createCameraGeometry({canvasWidth:1280,can
 const state=()=>makeOverlayState({session,sequence:1,geometry,
   snapshot:{mode:'PLAYING',attacks:[{cell:5,cells:[2,4,5,6,8]}]},sourcePoint:{x:1/6,y:1/6,visibility:1}});
 
-test('v3 uses new state and close wire identities, preserving the five-cell roundtrip',()=>{
-  assert.equal(OVERLAY_STATE_TYPE,'synthetic-state-v3');assert.equal(OVERLAY_CLOSED_TYPE,'synthetic-closed-v3');
+test('v4 uses new state and close wire identities, preserving the five-cell roundtrip',()=>{
+  assert.equal(OVERLAY_STATE_TYPE,'synthetic-state-v4');assert.equal(OVERLAY_CLOSED_TYPE,'synthetic-closed-v4');
   const message=state();assert.equal(message.type,OVERLAY_STATE_TYPE);
   for(const [width,height] of [[1280,720],[1920,1080]]){
     const decoded=readOverlayState(message,session,width,height);
@@ -23,7 +23,7 @@ test('v3 uses new state and close wire identities, preserving the five-cell roun
   }
 });
 
-test('v3 rejects both v1 payload variants even if an extra version field claims v2',()=>{
+test('v4 rejects both v1 payload variants even if an extra version field claims v2',()=>{
   for(const attacks of [[{cell:5}],[{cell:5,cells:[2,4,5,6,8]}]]){
     const legacy={...state(),type:'synthetic-state',snapshot:{mode:'PLAYING',attacks}};
     assert.throws(()=>readOverlayState(legacy,session,1280,720),/INVALID_OVERLAY_STATE/);
@@ -31,7 +31,7 @@ test('v3 rejects both v1 payload variants even if an extra version field claims 
   }
 });
 
-test('both actual historical readers reject v3 instead of silently reducing Cross to center',()=>{
+test('both actual historical readers reject v4 instead of silently reducing Cross to center',()=>{
   const message=state(),legacy={...message,type:'synthetic-state'};
   // Positive controls prove the fixtures still implement their historical behavior.
   assert.deepEqual(preCrossReader(legacy,session,1280,720).snapshot.attacks,[{cell:5}]);
@@ -41,7 +41,7 @@ test('both actual historical readers reject v3 instead of silently reducing Cros
 });
 
 test('unknown wire identities fail closed without compatibility fallback',()=>{
-  for(const type of ['synthetic-state-v2',undefined,null,2,'synthetic-state-v1','synthetic-state-v4','synthetic-state-v2-extra','synthetic-closed',OVERLAY_CLOSED_TYPE]){
+  for(const type of ['synthetic-state-v2',undefined,null,2,'synthetic-state-v1','synthetic-state-v3','synthetic-state-v5','synthetic-state-v2-extra','synthetic-closed',OVERLAY_CLOSED_TYPE]){
     assert.throws(()=>readOverlayState({...state(),type},session,1280,720),/INVALID_OVERLAY_STATE/);
   }
   const good=state();assert.equal(readOverlayState(good,session,1280,720).sequence,1);
@@ -55,4 +55,10 @@ test('historical fixtures retain the exact source bytes except documented import
     const original=fixture.split('\n').slice(2).join('\n').replace("'../../dist/camera_geometry.mjs'","'./camera_geometry.mjs'").replace("'../../dist/matrix.mjs'","'./matrix.mjs'");
     assert.equal(createHash('sha256').update(original).digest('hex'),expected);
   }
+});
+
+test('a v3 message (the previous wire identity) is refused by the v4 reader',()=>{
+  const old={...state(),type:'synthetic-state-v3'};
+  assert.throws(()=>readOverlayState(old,session,1280,720),/INVALID_OVERLAY_STATE/);
+  assert.throws(()=>readOverlayState({...state(),type:'synthetic-closed-v3'},session,1280,720),/INVALID_OVERLAY_STATE/);
 });

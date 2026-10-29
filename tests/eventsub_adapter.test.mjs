@@ -50,3 +50,15 @@ test('rejects commands without throwing or interpreting markup',()=>{
   const f=fixture();f.adapter.ingest(syntheticWelcome());assert.equal(f.adapter.ingest(chat('n','m','u','<script>')).reason,'INVALID_COMMAND');
   assert.equal(f.game.attacks.length,0);f.adapter.disconnect();assert.equal(f.adapter.status,'OFFLINE');
 });
+
+test('SUPP-01 (theme) cheer bits and subscriber/founder badges in the chat event mark a supporter; nothing else does, and a command still works the same',()=>{
+  const f=fixture();f.adapter.ingest(syntheticWelcome());
+  const send=(id,extra)=>f.adapter.ingest(syntheticChat({notificationId:`n${id}`,messageId:`m${id}`,actorId:`u${id}`,chatterName:'Mika',text:'!throw 5',...extra}));
+  assert.equal(send(1,{}).supporter,false);
+  assert.equal(send(2,{badges:[{set_id:'subscriber'}]}).supporter,true);
+  assert.equal(send(3,{badges:[{set_id:'founder'}]}).supporter,true);
+  assert.equal(send(4,{badges:[{set_id:'moderator'}]}).supporter,false);
+  const cheer=send(5,{cheerBits:100});assert.equal(cheer.supporter,true);assert.equal(cheer.cheerBits,100);
+  assert.equal(send(6,{cheerBits:-5}).supporter,false);assert.equal(send(7,{cheerBits:2e9}).supporter,false);   // out-of-range bits are ignored
+  assert.equal(f.adapter.ingest(syntheticChat({notificationId:'n8',messageId:'m8',actorId:'u8',chatterName:'Mika',text:'Cheer100 nice!',cheerBits:100})).cheerBits,100);   // a cheer that is not a command still reports its bits
+});

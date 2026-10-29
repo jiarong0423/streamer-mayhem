@@ -1,6 +1,7 @@
 // Bounded in-memory loopback relay for synthetic overlay state only.
 import {readOverlayState,makeOverlayState,OVERLAY_STATE_TYPE,OVERLAY_CLOSED_TYPE} from '../dist/overlay_protocol.mjs';
 const SESSION=/^[a-f0-9]{32}$/;
+export const MAX_BODY=8192;   // v4 adds up to 8 marquee items, a versus bar and a banner; tests/overlay_protocol.test.mjs sizes the largest legal state against this
 export function createOverlayRelay() {
   const sessions=new Map();
   const remove=(id)=>{const entry=sessions.get(id);if(!entry)return;clearTimeout(entry.timer);for(const response of entry.clients)response.end();sessions.delete(id);};
@@ -10,7 +11,7 @@ export function createOverlayRelay() {
   function handle(req,res){
     let path;try{path=new URL(req.url,'http://127.0.0.1').pathname;}catch{reject(res,400);return true;}
     if(!['/__overlay/events','/__overlay/state'].includes(path))return false;
-    const host=req.headers.host??'';if(!/^127\.0\.0\.1:\d+$/.test(host)){reject(res,403);return true;}
+    const host=req.headers.host??'';if(!/^(?:127\.0\.0\.1|localhost):\d+$/.test(host)){reject(res,403);return true;}
     if(path==='/__overlay/events'){
       const url=new URL(req.url,`http://${host}`),id=url.searchParams.get('session');
       if(req.method!=='GET'||!SESSION.test(id??'')||url.searchParams.getAll('session').length!==1||[...url.searchParams.keys()].some(k=>k!=='session')){reject(res,400);return true;}
@@ -21,7 +22,7 @@ export function createOverlayRelay() {
     }
     if(req.method!=='POST'||req.headers.origin!==`http://${host}` || req.headers['content-type']?.split(';')[0].trim()!=='application/json'){reject(res,403);return true;}
     let body='',oversize=false;req.setEncoding('utf8');
-    req.on('data',chunk=>{if(oversize)return;body+=chunk;if(body.length>4096){oversize=true;reject(res,413);req.destroy();}});
+    req.on('data',chunk=>{if(oversize)return;body+=chunk;if(body.length>MAX_BODY){oversize=true;reject(res,413);req.destroy();}});
     req.on('end',()=>{
       if(oversize)return;
       let message;try{message=JSON.parse(body);}catch{reject(res,400);return;}

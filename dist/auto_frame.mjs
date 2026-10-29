@@ -30,3 +30,16 @@ export class AutoFrame {
     const crop=centerCrop(face,this.span);this.adopt(face);return crop;
   }
 }
+
+// Theme: applying a new crop calls game.invalidateTracking(), which clears every ball on screen (the old coordinates no longer match). So a crop that auto-framing
+// wants to apply while a shot is on screen is held and applied as soon as the field is clear. A newer crop replaces an older held one.
+export function createCropGate() {
+  let held=null;
+  return {
+    offer(crop){if(crop)held=crop;},
+    // `busy` = a shot is on screen. Returns the crop to apply now, or null.
+    take(busy){if(busy||!held)return null;const c=held;held=null;return c;},
+    get pending(){return held!==null;},
+    clear(){held=null;}
+  };
+}

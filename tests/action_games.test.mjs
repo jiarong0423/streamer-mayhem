@@ -120,12 +120,12 @@ test('action admission and UNKNOWN floors reject fresh but delayed captures',()=
   assert.equal(game.snapshot().remainingMs,8000);assert.equal(game.snapshot().recoveryRemaining,0);
 });
 
-test('v3 roundtrip includes bounded challenge render state without private fields and hides unknown pose',()=>{
+test('v4 roundtrip includes bounded challenge render state without private fields and hides unknown pose',()=>{
   for(const kind of ['MOSQUITO','LAVA','FREEZE']){
     const s=setup();if(kind==='FREEZE')s.game.receiveSyntheticFreeze(s.event());else (kind==='LAVA'?s.lava:s.mosquito)();
     const snapshot=s.game.snapshot();snapshot.privateField='private-test-value';
     const message=makeOverlayState({session:'a'.repeat(32),sequence:1,geometry,snapshot,sourcePoint:point(.5,.3)});
-    assert.equal(message.type,'synthetic-state-v3');assert.equal(JSON.stringify(message).includes('private-test-value'),false);assert.equal(JSON.stringify(message).includes('actor-'),false);
+    assert.equal(message.type,'synthetic-state-v4');assert.equal(JSON.stringify(message).includes('private-test-value'),false);assert.equal(JSON.stringify(message).includes('actor-'),false);
     const decoded=readOverlayState(message,'a'.repeat(32),640,360);assert.equal(Boolean(decoded.snapshot.freeze??decoded.snapshot.actionGame),true);
     const scene=decoded.snapshot.freeze??decoded.snapshot.actionGame;scene.pose[Object.keys(scene.pose)[0]].x=0;
     assert.notEqual((message.snapshot.freeze??message.snapshot.actionGame).pose[Object.keys(scene.pose)[0]].x,0);

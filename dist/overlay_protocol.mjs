@@ -1,9 +1,10 @@
 // Same-origin, ephemeral synthetic overlay messages; no credentials or external services.
 import {createCameraGeometry} from './camera_geometry.mjs';
 import {CROSS_CELLS} from './matrix.mjs';
-// A new identity makes old readers reject expanded challenge render payloads.
-export const OVERLAY_STATE_TYPE='synthetic-state-v3';
-export const OVERLAY_CLOSED_TYPE='synthetic-closed-v3';
+import {sanitizeName} from './eventsub_adapter.mjs';
+// A new identity makes old readers reject expanded render payloads (v4: marquee, versus bar, combo, round clock, banner).
+export const OVERLAY_STATE_TYPE='synthetic-state-v4';
+export const OVERLAY_CLOSED_TYPE='synthetic-closed-v4';
 const SESSION=/^[a-f0-9]{32}$/;
 const MODES=new Set(['IDLE','PLAYING','PAUSED','TRACKING_LOST','RECOVERING','ROUND_END']);
 function renderAttack(attack) {
@@ -12,7 +13,9 @@ function renderAttack(attack) {
     const column=attack.cell-3;
     if(!Number.isInteger(column)||column<1||column>3||!Array.isArray(attack.cells)||attack.cells.length!==3||attack.cells.some((cell,i)=>cell!==column+i*3)||!Number.isFinite(attack.progress)||attack.progress<0||attack.progress>1)throw new Error('INVALID_OVERLAY_STATE');
     if(attack.variant!==undefined&&attack.variant!=='BOMB')throw new Error('INVALID_OVERLAY_STATE');
-    return {cell:attack.cell,kind:'DROP',cells:[...attack.cells],progress:attack.progress,...(attack.variant?{variant:attack.variant}:{})};
+    if(attack.landX!==undefined&&(!Number.isFinite(attack.landX)||attack.landX<0||attack.landX>1))throw new Error('INVALID_OVERLAY_STATE');
+    if(attack.label!==undefined&&!(typeof attack.label==='string'&&/^[^\u0000-\u001f\u007f-\u009f]{1,20}$/u.test(attack.label)))throw new Error('INVALID_OVERLAY_STATE');
+    return {cell:attack.cell,kind:'DROP',cells:[...attack.cells],progress:attack.progress,...(attack.label?{label:attack.label}:{}),...(attack.variant?{variant:attack.variant}:{}),...(attack.landX!==undefined?{landX:attack.landX}:{})};
   }
   if(attack.cells===undefined)return {cell:attack.cell};
   if(attack.cell!==5 || !Array.isArray(attack.cells) || attack.cells.length!==CROSS_CELLS.length ||
@@ -54,6 +57,46 @@ function renderAction(value,playing){
   if(!Number.isSafeInteger(value.burns)||value.burns<0||value.burns>60)return error();
   return {active:true,kind:value.kind,status:value.status,remainingMs:number(value.remainingMs,0,10000),recoveryRemaining:number(value.recoveryRemaining,0,60000),pose:visible?pose:null,mosquito:visible&&value.kind==='MOSQUITO'?renderPoint(value.mosquito,false):null,level:number(value.level,0,.8),targetLevel:number(value.targetLevel,0,.8),burns:value.burns};
 }
+// ---- v4 display extras: only game state (names, short fixed phrases, numbers, enums); never pixels, ids or free-form colours ----
+export const TICKER_TONES=Object.freeze(['SCORE3','SCORE2','MISS','SPLAT','DODGE','CHEER','REFUSED']);
+export const BANNER_KINDS=Object.freeze(['COUNTDOWN','GO','ROUND_OVER']);
+export const TICKER_LIMITS=Object.freeze({items:8,nameChars:20,textChars:40,ageMs:90000});
+const BANNER_TEXT={COUNTDOWN:/^[1-3]$/,GO:/^GO!$/,ROUND_OVER:/^ROUND OVER · SCORE \d{1,7}(?: · (?:STREAMER|CHAT) WINS)?$/};
+const BANNER_MAX_AGE_MS=7000;
+const TEXT_OK=/^[^\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202f\u2060-\u206f\ufeff\u2605]+$/u;
+// A viewer name is valid when the shared name cleaner (eventsub_adapter.sanitizeName, the one every chat path uses) leaves it unchanged; 'AUTO' marks the game's own drops.
+export function isTickerName(name){
+  if(typeof name!=='string')return false;const n=Array.from(name).length;
+  return n>=1&&n<=TICKER_LIMITS.nameChars&&(name==='AUTO'||sanitizeName(name)===name);
+}
+export const isTickerText=text=>typeof text==='string'&&Array.from(text).length>=1&&Array.from(text).length<=TICKER_LIMITS.textChars&&TEXT_OK.test(text);
+const int=(value,min,max)=>Number.isInteger(value)&&value>=min&&value<=max?value:error();
+function renderTickerEntry(e){
+  if(!e||typeof e!=='object'||Array.isArray(e))return error();
+  if(!isTickerName(e.name)||!isTickerText(e.text)||!TICKER_TONES.includes(e.tone))return error();
+  if(e.star!==undefined&&typeof e.star!=='boolean')return error();
+  return {name:e.name,text:e.text,tone:e.tone,...(e.star===true?{star:true}:{}),ageMs:int(e.ageMs,0,TICKER_LIMITS.ageMs)};
+}
+function renderBanner(b){
+  if(!b||typeof b!=='object'||Array.isArray(b)||!BANNER_KINDS.includes(b.kind)||typeof b.text!=='string'||!BANNER_TEXT[b.kind].test(b.text))return error();
+  if(b.grade!==undefined&&!(b.kind==='ROUND_OVER'&&['S','A','B'].includes(b.grade)))return error();
+  return {kind:b.kind,text:b.text,...(b.grade?{grade:b.grade}:{}),ageMs:int(b.ageMs,0,BANNER_MAX_AGE_MS)};
+}
+function renderExtras(snapshot){
+  const extra={};
+  if(snapshot.ticker!==undefined){
+    if(!Array.isArray(snapshot.ticker)||snapshot.ticker.length>TICKER_LIMITS.items)return error();
+    if(snapshot.ticker.length)extra.ticker=snapshot.ticker.map(renderTickerEntry);
+  }
+  if(snapshot.versus!==undefined){
+    const v=snapshot.versus;if(!v||typeof v!=='object'||Array.isArray(v))return error();
+    extra.versus={streamer:int(v.streamer,0,1e6),chat:int(v.chat,0,1e6)};
+  }
+  if(snapshot.combo!==undefined)extra.combo=int(snapshot.combo,0,999);
+  if(snapshot.roundLeftMs!==undefined)extra.roundLeftMs=int(snapshot.roundLeftMs,0,120000);
+  if(snapshot.banner!==undefined&&snapshot.banner!==null)extra.banner=renderBanner(snapshot.banner);
+  return extra;
+}
 function renderSnapshot(snapshot){
   if(!snapshot||!MODES.has(snapshot.mode)||!Array.isArray(snapshot.attacks)||snapshot.attacks.length>8)return error();
   const playing=snapshot.mode==='PLAYING',attacks=snapshot.attacks.map(renderAttack),freeze=renderFreeze(snapshot.freeze,playing),action=renderAction(snapshot.actionGame,playing);
@@ -64,7 +107,7 @@ function renderSnapshot(snapshot){
   if(snapshot.hp!==undefined)hud.hp=Number.isFinite(snapshot.hp)?Math.max(0,Math.min(100,snapshot.hp)):error();
   // The last viewer who triggered something (display name, already cleaned by the sender); the overlay shows it for a few seconds.
   if(snapshot.viewer!==undefined&&!(typeof snapshot.viewer==='string'&&/^[^\u0000-\u001f\u007f-\u009f]{1,20}$/u.test(snapshot.viewer)))return error();
-  return {mode:snapshot.mode,attacks:playing?attacks:[],...hud,...(snapshot.viewer?{viewer:snapshot.viewer}:{}),...(freeze?{freeze}:{}),...(action?{actionGame:action}:{})};
+  return {mode:snapshot.mode,attacks:playing?attacks:[],...hud,...renderExtras(snapshot),...(snapshot.viewer?{viewer:snapshot.viewer}:{}),...(freeze?{freeze}:{}),...(action?{actionGame:action}:{})};
 }
 export function parseOverlayQuery(search) {
   const q=new URLSearchParams(search);

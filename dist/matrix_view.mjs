@@ -1,6 +1,6 @@
 // Pure geometry and Canvas drawing; this module does not access a camera or network.
-import {dropTarget,dropY,DROP_FLOOR,DROP_CATCH_HALF} from './drop_lanes.mjs';
-import {drawGuide,drawLanding,drawOrb,drawBomb} from './art.mjs';
+import {dropTarget,dropY,DROP_FLOOR,DROP_CATCH_HALF,dropPoints,shotArc} from './drop_lanes.mjs';
+import {drawGuide,drawLanding,drawOrb,drawBomb,THREE_BALL_COLOR,STAR_BALL_COLOR} from './art.mjs';
 export function containRect(viewWidth, viewHeight, sourceWidth, sourceHeight) {
   if (![viewWidth,viewHeight,sourceWidth,sourceHeight].every(n=>Number.isFinite(n) && n>0)) throw new RangeError('Invalid dimensions');
   const scale=Math.min(viewWidth/sourceWidth,viewHeight/sourceHeight);
@@ -73,14 +73,41 @@ export function drawCameraOverlay(ctx,geometry,snapshot,{clear=true,grid=false,n
     if(attack.kind==='DROP'){
       // Catch mode: a small golden orb falls from above the window to its target x near the bottom; the streamer's catcher (drawn by the arena) must cover it.
       // A faint guide line, a landing ring the width of the catcher, a short trail and a glow keep it readable without hiding the face.
-      const target=dropTarget(attack.cell-3);if(target===null)continue;
+      const target=Number.isFinite(attack.landX)?attack.landX:dropTarget(attack.cell-3);if(target===null)continue;
       const bomb=attack.variant==='BOMB',hue=bomb?'255,90,70':'217,249,101';
       const cx=rect.x+target*rect.width,radius=Math.max(4,Math.min(rect.width/36,rect.height/22)),p=Math.max(0,Math.min(1,attack.progress??0));
-      const y=rect.y+dropY(p)*rect.height,floor=rect.y+DROP_FLOOR*rect.height,ringHalf=DROP_CATCH_HALF*rect.width;
-      drawGuide(ctx,cx,rect.y,floor,radius,hue);
+      // Three-point shot (theme): the ball or pie is thrown from the right edge, rises in an arc and comes down at its target x on the floor line; p still means "time until it lands".
+      const floor=rect.y+DROP_FLOOR*rect.height,ringHalf=DROP_CATCH_HALF*rect.width;
+      const three=dropPoints(target)===3,arc=shotArc(attack.eventId??attack.id??attack.cell,three?3:2);   // see ARC_RANGES
+      let sx,sy;
+      if(three){   // left and right lanes: thrown from the lane's own side in a gentle arc
+        const startX=target<.5?rect.x+(1-arc.reach)*rect.width:rect.x+arc.reach*rect.width,lift=4*((arc.startY+DROP_FLOOR)/2-arc.apex);
+        sx=startX+(cx-startX)*p;sy=rect.y+(arc.startY+(DROP_FLOOR-arc.startY)*p-lift*p*(1-p))*rect.height;
+      }else{       // middle lane: dropped from above with a little sideways drift
+        sx=cx+arc.side*arc.drift*rect.width*(1-p);sy=rect.y+(arc.startY+(DROP_FLOOR-arc.startY)*p)*rect.height;
+      }
+      if(bomb){
+        // Pie (theme): first the column flashes as a warning, then the pie appears directly at the target (no flight); it lands at p=1.
+        const PIE_AT=.72;
+        if(p<PIE_AT){
+          const blink=Math.sin(now/1000*2*Math.PI*3)>0?.38:.12;
+          ctx.fillStyle=`rgba(255,90,70,${blink})`;ctx.fillRect(cx-ringHalf,rect.y,ringHalf*2,floor-rect.y);
+          ctx.fillStyle=`rgba(255,236,230,${blink+.4})`;ctx.font=`900 ${Math.max(14,radius*2.4)}px sans-serif`;ctx.textAlign='center';ctx.fillText('!',cx,rect.y+radius*3);ctx.textAlign='left';
+        }
+        drawLanding(ctx,cx,floor,radius,ringHalf,p,now,hue);
+        if(p>=PIE_AT){const pop=Math.min(1,(p-PIE_AT)/.06);ctx.save();ctx.translate(cx,floor-radius*1.4);ctx.scale(.6+.4*pop,.6+.4*pop);drawBomb(ctx,0,0,radius*1.3,now,p);ctx.restore();}
+        continue;
+      }
       drawLanding(ctx,cx,floor,radius,ringHalf,p,now,hue);
       // A bomb is a dark core with a red breathing glow, spikes and a sparking fuse, so it reads as "keep away" and never as a gold item.
-      if(bomb)drawBomb(ctx,cx,y,radius,now,p);else drawOrb(ctx,cx,y,radius,now,p);
+      if(bomb)drawBomb(ctx,sx,sy,radius,now,p);else{
+        const star=Boolean(attack.label);
+        drawOrb(ctx,sx,sy,radius,now,p,star?'star':three);
+        ctx.save();ctx.textAlign='center';ctx.strokeStyle='rgba(10,16,10,.9)';
+        if(star){const size=Math.max(10,radius*1.25),text=`★ ${attack.label}`;ctx.font=`900 ${size}px sans-serif`;ctx.lineWidth=Math.max(2.5,radius/4);ctx.fillStyle=STAR_BALL_COLOR;ctx.strokeText(text,sx,sy-radius*1.6);ctx.fillText(text,sx,sy-radius*1.6);}
+        else{ctx.fillStyle=three?THREE_BALL_COLOR:'rgba(255,255,255,.85)';ctx.font=`900 ${Math.max(9,radius*1.1)}px sans-serif`;ctx.lineWidth=Math.max(2,radius/5);ctx.strokeText(three?'3PT':'2PT',sx,sy-radius*1.5);ctx.fillText(three?'3PT':'2PT',sx,sy-radius*1.5);}
+        ctx.restore();
+      }
       continue;
     }
     // Attack: only the targeted cells light up, with a soft rounded fill and the cell number, so no grid is needed on screen.

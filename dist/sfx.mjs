@@ -9,8 +9,7 @@ export const SFX_KEY = 'sm.sfx';
 // Major pentatonic steps used by the combo streak; the catch sound uses step n for a combo of n (capped at 8).
 export const COMBO_SCALE = Object.freeze([523, 587, 659, 784, 880, 1047, 1175, 1319]);
 // Peak level of the loudest layer of each sound in dBFS before the master gain (the master is about -6 dB on top of this).
-export const SFX_PEAK_DB = Object.freeze({ catch: -14, miss: -16, bombWarn: -18, bomb: -10, avoid: -20, hit: -10, dodge: -20, swat: -9, bite: -12, roundStart: -16, roundEnd: -16, tick: -20 });
-export const MOSQUITO_DB = Object.freeze({ far: -34, near: -22, landed: -24 });
+export const SFX_PEAK_DB = Object.freeze({ catch: -14, miss: -16, bombWarn: -18, bomb: -10, avoid: -20, hit: -10, dodge: -20, roundStart: -16, roundEnd: -16, tick: -20 });
 const SEMITONE_7 = Math.pow(2, 7 / 12);
 
 function defaultFactory() {
@@ -22,7 +21,6 @@ function defaultFactory() {
 export function createSfx({ ctxFactory = defaultFactory, storage = null, keepAlive = false, maxVoices = 8, dedupeMs = 40 } = {}) {
   let enabled = false, volume = 1, unlocked = false, ctx = null, bus = null, master = null, limiter = null, noise = null;
   const voices = [], lastPlayed = new Map();
-  let mosq = null, tickNext = null, lateTicks = 0;
 
   try {
     const saved = JSON.parse(storage?.getItem(SFX_KEY) ?? 'null');
@@ -136,22 +134,17 @@ export function createSfx({ ctxFactory = defaultFactory, storage = null, keepAli
       b.tone({ type: 'sine', f0: 600, f1: 900, dur: 0.12, a: 0.005, peak: SFX_PEAK_DB.avoid });
       b.burst({ dur: 0.1, a: 0.01, peak: SFX_PEAK_DB.avoid, filter: { type: 'bandpass', freq: 2500, q: 1 } });
     },
-    swat(b) {
-      b.burst({ dur: 0.06, a: 0.001, peak: SFX_PEAK_DB.swat, filter: { type: 'bandpass', freq: 1200, q: 2 } });
-      b.tone({ type: 'sine', f0: 200, f1: 90, dur: 0.08, a: 0.002, peak: SFX_PEAK_DB.swat });
-      b.tone({ type: 'triangle', f0: 880, at: 0.1, dur: 0.09, peak: -16 });
-      b.tone({ type: 'triangle', f0: 1175, at: 0.19, dur: 0.12, peak: -16 });
-    },
-    bite(b) { b.tone({ type: 'square', f0: 700, f1: 250, dur: 0.18, a: 0.005, peak: SFX_PEAK_DB.bite, trem: { hz: 8, depth: 0.4 }, filter: { type: 'lowpass', freq: 1500 } }); },
     roundStart(b) { [392, 523, 659].forEach((f, i) => b.tone({ type: 'triangle', f0: f, at: i * 0.11, dur: 0.09, peak: SFX_PEAK_DB.roundStart })); },
     roundEnd(b) { [659, 523, 392, 262].forEach((f, i) => b.tone({ type: 'triangle', f0: f, at: i * 0.16, dur: i === 3 ? 0.4 : 0.14, peak: SFX_PEAK_DB.roundEnd })); },
     tick(b, o) { b.tone({ type: 'sine', f0: clamp(o.freq, 800, 3000, 1500), at: clamp(o.at, 0, 5, 0), dur: 0.02, a: 0.001, peak: SFX_PEAK_DB.tick }); }
   };
+  // Basketball theme: all synthesized like the rest, so there is nothing to download or license.
+  RECIPES.swish = (b) => { b.burst({ dur: 0.3, a: 0.03, peak: -24, filter: { type: 'highpass', freq: 5200, freq1: 2400 } }); b.tone({ type: 'sine', f0: 1400, f1: 900, dur: 0.12, a: 0.004, peak: -30 }); };
+  RECIPES.rim = (b) => { b.tone({ type: 'triangle', f0: 520, dur: 0.2, a: 0.001, peak: -16 }); b.tone({ type: 'triangle', f0: 790, dur: 0.16, a: 0.001, peak: -18 }); b.burst({ dur: 0.05, a: 0.001, peak: -22, filter: { type: 'bandpass', freq: 2600, q: 2 } }); };
+  RECIPES.splat = (b) => { b.burst({ dur: 0.26, a: 0.003, peak: -12, filter: { type: 'lowpass', freq: 1800, freq1: 280 } }); b.tone({ type: 'sine', f0: 170, f1: 70, dur: 0.2, a: 0.003, peak: -13 }); };
+  RECIPES.shoot = (b) => { b.burst({ dur: 0.38, a: 0.12, peak: -28, filter: { type: 'bandpass', freq: 500, freq1: 1900, q: 0.9 } }); };
   RECIPES.hit = (b) => RECIPES.bomb(b, { short: true });
   RECIPES.dodge = RECIPES.avoid;
-  // Result outcomes that end the mosquito (its hum must stop with them).
-  const ENDS_MOSQUITO = new Set(['swat', 'bite']);
-
   function play(name, opts = {}) {
     const recipe = RECIPES[name];
     if (!recipe || !ready()) return false;
@@ -161,7 +154,6 @@ export function createSfx({ ctxFactory = defaultFactory, storage = null, keepAli
       if (last !== undefined && t - last < dedupeMs / 1000) return false;
       lastPlayed.set(name, t);
     }
-    if (ENDS_MOSQUITO.has(name)) mosquitoLoop.stop();
     for (const v of voices.filter(v => v.end <= t)) forget(v);
     for (;;) {   // at most maxVoices sounding at once: make room by dropping the oldest of the same sound, else the oldest of all
       const sounding = voices.filter(v => v.start <= t);
@@ -175,49 +167,9 @@ export function createSfx({ ctxFactory = defaultFactory, storage = null, keepAli
     return true;
   }
 
-  // The mosquito hum: a sawtooth with 6 Hz vibrato whose pitch and level follow the mosquito; the ticking while it sits on the face lives here too.
-  const mosquitoLoop = {
-    start() {
-      if (mosq || !ready()) return false;
-      const osc = ctx.createOscillator(), lfo = ctx.createOscillator(), depth = ctx.createGain(), low = ctx.createBiquadFilter(), gain = ctx.createGain();
-      osc.type = 'sawtooth'; osc.frequency.value = 380; lfo.frequency.value = 6; depth.gain.value = 12;
-      low.type = 'lowpass'; low.frequency.value = 1800; gain.gain.value = 0.0001;
-      lfo.connect(depth); depth.connect(osc.frequency); osc.connect(low); low.connect(gain); gain.connect(bus);
-      osc.start(); lfo.start();
-      mosq = { osc, lfo, depth, low, gain }; tickNext = null; lateTicks = 0;
-      setParam(gain.gain, db(MOSQUITO_DB.far), 0.05);
-      return true;
-    },
-    // dist: 0 at the face .. 1 far away. landed: sitting on the face; progress: 0..1 over the landing window.
-    update({ dist = 1, landed = false, progress = 0 } = {}) {
-      if (!mosq || !ready()) return false;
-      const d = clamp(dist, 0, 1, 1), p = clamp(progress, 0, 1, 0), t = ctx.currentTime;
-      const freq = landed ? 520 : 380 + 120 * (1 - d);
-      const level = landed ? db(MOSQUITO_DB.landed) : db(MOSQUITO_DB.far) + (db(MOSQUITO_DB.near) - db(MOSQUITO_DB.far)) * (1 - d);
-      setParam(mosq.osc.frequency, freq, 0.05); setParam(mosq.gain.gain, level, 0.05); setParam(mosq.lfo.frequency, landed ? 9 : 6, 0.05);
-      if (!landed) { tickNext = null; lateTicks = 0; return true; }
-      // Countdown ticks: every 250 ms, every 100 ms (rising in pitch) in the last quarter of the window.
-      if (tickNext === null) tickNext = t;
-      for (let guard = 0; tickNext <= t + 0.02 && guard < 8; guard++) {
-        const late = p >= 0.75;
-        play('tick', { freq: late ? 1500 + 60 * lateTicks : 1500, at: Math.max(0, tickNext - t), skipDedupe: true });
-        if (late) lateTicks++;
-        tickNext += late ? 0.1 : 0.25;
-      }
-      return true;
-    },
-    stop() {
-      if (!mosq) return;
-      const m = mosq; mosq = null; tickNext = null; lateTicks = 0;
-      try { m.gain.gain.cancelScheduledValues?.(ctx.currentTime); m.gain.gain.setTargetAtTime(0, ctx.currentTime, 0.03); m.osc.stop(ctx.currentTime + 0.25); m.lfo.stop(ctx.currentTime + 0.25); } catch { /* already stopped */ }
-      m.osc.onended = () => { for (const n of [m.osc, m.lfo, m.depth, m.low, m.gain]) { try { n.disconnect(); } catch { /* gone */ } } };
-    },
-    get active() { return Boolean(mosq); }
-  };
-
   function setEnabled(on) {
     enabled = Boolean(on); save();
-    if (!enabled) { mosquitoLoop.stop(); for (const v of [...voices]) kill(v); }
+    if (!enabled) { for (const v of [...voices]) kill(v); }
     if (master) setParam(master.gain, masterLevel(), 0.02);
   }
   function setVolume(v) {
@@ -226,7 +178,6 @@ export function createSfx({ ctxFactory = defaultFactory, storage = null, keepAli
   }
   function suspend() {
     if (keepAlive || !ctx) return;
-    mosquitoLoop.stop();
     try { Promise.resolve(ctx.suspend()).catch(() => {}); } catch { /* nothing to suspend */ }
   }
   function resume() {
@@ -235,6 +186,6 @@ export function createSfx({ ctxFactory = defaultFactory, storage = null, keepAli
   }
   const status = () => !enabled ? 'MUTED' : unlocked ? 'AUDIO READY' : 'AUDIO LOCKED';
 
-  return { unlock, setEnabled, setVolume, play, mosquitoLoop, suspend, resume, status,
+  return { unlock, setEnabled, setVolume, play, suspend, resume, status,
     get enabled() { return enabled; }, get volume() { return volume; }, get unlocked() { return unlocked; } };
 }

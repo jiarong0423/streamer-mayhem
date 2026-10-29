@@ -9,26 +9,26 @@ import { ProviderActivation } from './provider_activation.mjs';
 import { IrcAnonymousChat, normalizeChannel } from './irc_anonymous.mjs';
 import { CameraTracker, PointStabilizer } from './camera_tracker.mjs';
 import { drawArena } from './arena_draw.mjs';
-import {AutoFrame} from './auto_frame.mjs';
-import {dropColumn,dropTarget,DROP_FLOOR} from './drop_lanes.mjs';
+import { createTicker, speakableName, cleanName, chatPointsFor } from './ticker.mjs';
+import {AutoFrame,createCropGate} from './auto_frame.mjs';
+import {dropColumn,dropTarget,dropLandX,DROP_FLOOR} from './drop_lanes.mjs';
 import {CatchBurst,loadSprites} from './catch_fx.mjs';
 import {DropWaves} from './drop_waves.mjs';
-import {FaceMosquito,mosquitoDistance} from './face_mosquito.mjs';
-import {MotionProbe,grayFromRgba} from './motion_probe.mjs';
 import {createCameraGeometry,centerCrop,projectCameraPoint,projectCameraFrame,canvasPointToSource,visiblePointToCanvas} from './camera_geometry.mjs';
-import {makeOverlayState,OVERLAY_CLOSED_TYPE} from './overlay_protocol.mjs';
+import {createOverlayPublisher,obsCameraSetup,buildOverlayExtras} from './overlay_publisher.mjs';
 import {SyntheticFrameSource} from './frame_source.mjs';
 
 // One line for the activity feed, by what the chat command really was (the adapter keeps the game's `kind`).
 let lastViewer=null;      // {name,at} of the latest accepted chat command, shown on the stream overlay for a few seconds
+const ticker=createTicker();let chatScore=0;const cropGate=createCropGate();
 function describeDelivery(result){
   if(result.viewer)lastViewer={name:result.viewer,at:performance.now()};
+  if(result.accepted&&result.viewer&&result.eventId!==undefined)ticker.noteShot(result.eventId,result.viewer,performance.now(),result.supporter);
   const who=result.viewer?`${result.viewer}: `:'';
   return who+describeCommand(result);
 }
 function describeCommand(result){
-  if(result.kind==='FACE_MOSQUITO')return '!mosquito · watch your face';
-  if(result.kind==='DROP'){const lane=(result.cells?.[0]??result.cell-3);return result.variant==='BOMB'?`!bomb ${lane} · dodge it`:`!drop ${lane} · get under it`;}
+  if(result.kind==='DROP'){const lane=(result.cells?.[0]??result.cell-3);return result.variant==='BOMB'?`!pie ${lane} · dodge the pie`:`!drop ${lane} · catch the ball`;}
   return `!throw ${result.cell} · 0.5 s warning`;
 }
 const $ = selector => document.querySelector(selector);
@@ -38,9 +38,9 @@ const poseControls={spread:.1,hip:.5,leftWrist:{x:.25,y:.55},rightWrist:{x:.75,y
 const challengeNames={DROP:'Catch the drop',CROSS:'Cross Inferno',FREEZE:'Freeze',MOSQUITO:'Mosquito',LAVA:'Lava'};
 let cameraGeometry=createCameraGeometry({canvasWidth:canvas.width,canvasHeight:canvas.height,viewport:{x:0,y:0,width:canvas.width,height:canvas.height},sourceWidth:1280,sourceHeight:720});
 let eventId=0,tracking=true,lastEffect=null,animationId=0,mockMode=false,chatMode=false,providerActivation=null,configuredProvider=null,ircChat=null,cameraTracker=null,cameraOn=false,cameraMirror=true,cameraKindLabel='CAMERA FACE TRACKING',savedGeometry=null;
-let overlaySession=null,overlaySequence=0,lastOverlayUpdate=0,overlayInFlight=0,overlayEnabled=false;
+let lastOverlayUpdate=0,roundLeftNow;
 const modeNames={IDLE:'Ready',PLAYING:'Playing',PAUSED:'Paused',TRACKING_LOST:'Tracking lost',RECOVERING:'Getting ready',ROUND_END:'Round over'};
-const reasons={MODE_BUSY:'Finish the current challenge first',POSE_UNKNOWN:'Not enough joints visible or lava at its cap; restore the joint',FREEZE_COOLDOWN:'Freeze is cooling down',GAME_COOLDOWN:'This game is cooling down',INVALID_LEVEL:'Lava level must be between 0.1 and 0.8',INVALID_COMMAND:'Enter !throw 1-9, !freeze, !mosquito or !lava',ACTOR_COOLDOWN:'This viewer must wait',GLOBAL_COOLDOWN:'Wait a moment before throwing',QUEUE_FULL:'Attack queue full',OFFLINE:'Simulated chat is offline',NOT_PLAYING:'The game cannot accept attacks now',DUPLICATE:'Duplicate event skipped',INVALID_EVENT:'Malformed simulated event'};
+const reasons={MODE_BUSY:'Finish the current challenge first',POSE_UNKNOWN:'Not enough joints visible or lava at its cap; restore the joint',FREEZE_COOLDOWN:'Freeze is cooling down',GAME_COOLDOWN:'This game is cooling down',INVALID_LEVEL:'Lava level must be between 0.1 and 0.8',INVALID_COMMAND:'Enter !drop 1-3 (a ball) or !pie 1-3 (a pie)',ACTOR_COOLDOWN:'This viewer must wait',GLOBAL_COOLDOWN:'Wait a moment before sending another',QUEUE_FULL:'Attack queue full',OFFLINE:'Simulated chat is offline',NOT_PLAYING:'The game cannot accept attacks now',DUPLICATE:'Duplicate event skipped',INVALID_EVENT:'Malformed simulated event'};
 
 function feed(title,detail) {
   const li=document.createElement('li'),dot=document.createElement('span'),body=document.createElement('div');
@@ -51,131 +51,73 @@ function feed(title,detail) {
 }
 
 // Sound: synthesised in sfx.mjs, muted until the streamer clicks the sound button (browsers need a click, and a stream should never start noisy).
-// ?sfx=0 disables it (when the OBS overlay carries the sound instead); ?keepalive=1 keeps it running while the tab is hidden.
+// ?sfx=0 turns this page's sound off (the OBS overlay has no sound of its own); ?keepalive=1 keeps it running while the tab is hidden.
 const pageParams=new URLSearchParams(location.search);
 function safeStorage(){try{return window.localStorage;}catch{return null;}}
 const sfx=createSfx({storage:safeStorage(),keepAlive:pageParams.get('keepalive')==='1'});
 const soundDisabled=pageParams.get('sfx')==='0';
-const OUTCOME_SOUND={CATCH:'catch',MISS:'miss',BOMB:'bomb',AVOID:'avoid',HIT:'hit',DODGE:'dodge',SWAT:'swat',BITE:'bite'};   // UNKNOWN makes no sound
-const warnedBombs=new Set();
-// Mosquito tutorial: the first mosquito of a round is a demonstration (its bite costs nothing); hints show until the first successful swat.
-let mosquitoCount=0,mosquitoDemo=false,swatLearned=false,landedHinted=false,mosquitoHint=null;
+const OUTCOME_SOUND={CATCH:'catch',MISS:'rim',BOMB:'splat',AVOID:'avoid',HIT:'hit',DODGE:'dodge'};   // UNKNOWN makes no sound
+const warnedBombs=new Set(),shotHeard=new Set();
+// Announcer (Kokoro af_heart clips generated locally, dist/voice): a three-pointer is called, a two-pointer gets "Good shot!" or "Nice shot!" in turn.
+// Only while the sound is on and unlocked, never more than one line per 1.2 s, so a streak of catches does not turn into chatter.
+const voiceClips={};let voiceAt=-Infinity,voiceTurn=0,thanksAt=-Infinity;
+// Star ball (theme): a chat message with Bits that is not itself a command sends a gold ball with the supporter's name on it (a command that comes with a cheer
+// already carries the name, see the engine). Catching a star ball is the thank-you: the announcer says "Thank you for the support!", or, when the streamer
+// switched it on (off by default, name filtered, at most one every 8 s), the browser voice reads the name. The fixed clip never says a name.
+const starQueue=[];let starSerial=0,starTryAt=0;
+function announceSupport(delivery){
+  // Only a cheer that is not a command (INVALID_COMMAND) earns a star ball: a refused command (cooldown, busy, duplicate) never does, and the adapter drops repeats.
+  if(!(delivery?.cheerBits>0)||delivery.accepted||delivery.reason!=='INVALID_COMMAND')return;
+  const name=cleanName(delivery.viewer);if(!name||starQueue.length>=3)return;starQueue.push(name);
+}
+function stepStars(now){
+  if(!starQueue.length||now<starTryAt||game.mode!=='PLAYING')return;starTryAt=now+1500;
+  const id=`star-${++starSerial}`,name=starQueue[0];
+  const r=game.receiveWaveDrop({notificationId:id,messageId:id,actorId:id,receivedAt:now},{column:[1,3,2][starSerial%3],fall:2800,label:name});
+  if(r.accepted){starQueue.shift();ticker.noteShot(id,name,now,true);}
+  else if(!['MODE_BUSY','QUEUE_FULL','GLOBAL_COOLDOWN','NOT_PLAYING'].includes(r.reason))starQueue.shift();   // busy: try again shortly; anything else: drop it
+}
+function thankSupporter(label){
+  if(sfx.status()!=='AUDIO READY')return;
+  const now=performance.now();if(now-thanksAt<8000)return;thanksAt=now;
+  const name=speakableName(label),speak=Boolean(document.querySelector('#speak-names')?.checked&&name&&typeof speechSynthesis!=='undefined');   // empty name: the fixed clip
+  try{
+    if(speak){const u=new SpeechSynthesisUtterance(`${name}, thank you for the support`);u.lang=/[\u3400-\u9fff]/.test(name)?'zh-TW':'en-US';u.volume=.9;speechSynthesis.cancel();speechSynthesis.speak(u);}
+    else{const a=(voiceClips.thanks??=new Audio('./voice/thanks.wav'));a.currentTime=0;a.volume=.9;a.play().catch(()=>{});}
+  }catch{/* the strip still shows the supporter */}
+}
+function playVoice(points){
+  if(sfx.status()!=='AUDIO READY')return;
+  const now=performance.now();if(now-voiceAt<1200)return;voiceAt=now;
+  const name=points===3?'three_points':(voiceTurn++%2?'nice_shot':'good_shot');
+  try{const a=(voiceClips[name]??=new Audio(`./voice/${name}.wav`));a.currentTime=0;a.volume=.9;a.play().catch(()=>{});}catch{/* the sound effects still play */}
+}
 // ?seed=N makes the automatic waves repeatable (for rehearsals and the video); otherwise each round differs.
 const seedParam=Number(new URLSearchParams(location.search).get('seed'));
-const waves=new DropWaves({seed:Number.isInteger(seedParam)&&seedParam>0?seedParam:(Date.now()&0x7fffffff)||1});let waveSerial=0,roundEnding=false,banner=null;
+// Theme pacing: a slow base fall (2.2-3.8 s) made faster by a random factor of 1.1-1.5 per shot (continuous, so speeds are very varied), shrinking a little over the
+// round but never faster than 1.5 s (the speed ceiling); gaps never shorter than 0.55 s; at most three shots on screen.
+const waves=new DropWaves({seed:Number.isInteger(seedParam)&&seedParam>0?seedParam:(Date.now()&0x7fffffff)||1,maxActive:3,fallMin:2200,fallMax:3800,fallFloor:1500,speedFactor:[1.1,1.5],gapMin:550,gapMax:2400,gapBase:800,gapMean:1000,gapFloor:550,laneStepMs:450,bombStart:.12,bombEnd:.22,columnWeights:[.06,.88,.06],maxSame:4,landXFor:(column,tag)=>dropLandX(column,`wave-${waveSerial+1}-${tag}`,.12)});let waveSerial=0,roundEnding=false,banner=null;
 const autoDrops=document.querySelector('#auto-drops');
-$('#face-mosquito').addEventListener('click',()=>{startFaceMosquito();});
-$('#swat').addEventListener('click',()=>{swatFrames=3;});
-autoDrops.addEventListener('change',()=>{waves.reset(performance.now());roundEnding=false;banner=null;mosquitoHint=null;mosquitoPlanned=false;mosquitoCount=0;if(autoDrops.checked)sfx.play('roundStart');if(!autoDrops.checked&&session.phase==='running')session.phase='over';syncStart();feed(autoDrops.checked?'Auto drops on':'Auto drops off',autoDrops.checked?'Random gold items and bombs, rising difficulty':'Only chat starts drops');});
+autoDrops.addEventListener('change',()=>{waves.reset(performance.now());roundEnding=false;banner=null;if(autoDrops.checked)sfx.play('roundStart');if(!autoDrops.checked&&session.phase==='running')session.phase='over';syncStart();feed(autoDrops.checked?'Auto drops on':'Auto drops off',autoDrops.checked?'Random balls and pies, rising difficulty':'Only chat starts drops');});
 const catchFx=new CatchBurst({count:24});let fxSprites={},lastMarker=null;
-// The mosquito that goes for the face: flight in face_mosquito.mjs; a hand swat or face slap is seen as motion (motion_probe.mjs) where the mosquito is.
-const mosquito=new FaceMosquito({seed:(Date.now()&0x7fffffff)||1});
-const probe=new MotionProbe(),probeCanvas=document.createElement('canvas');probeCanvas.width=64;probeCanvas.height=36;
-const probeCtx=probeCanvas.getContext('2d',{willReadFrequently:true});
-let probeFailed=false;
-const swatTest=document.querySelector('#swat-test');let swatPeak=0,swatRun=0;
-swatTest.addEventListener('change',()=>{if(!swatTest.checked)$('#swat-meter').hidden=true;swatPeak=0;swatRun=0;});
-// Live swat sensor bar: the mark is the level a swat needs (0.28); the bar turns orange after two new frames at or above it.
-function showSwat(level){
-  const m=$('#swat-meter');if(!m)return;
-  m.hidden=!(swatTest.checked&&cameraOn);if(m.hidden)return;
-  swatPeak=Math.max(swatPeak*.97,level);swatRun=level>=.28?swatRun+1:0;
-  $('#swat-fill').style.width=`${Math.min(100,level*100)}%`;$('#swat-fill').classList.toggle('hit',swatRun>=2);
-  $('#swat-text').textContent=`${level.toFixed(2)}  peak ${swatPeak.toFixed(2)}${swatRun>=2?'  SWAT!':''}`;
-}
-let swatFrames=0,biteAt=-Infinity,mosquitoPlanned=false,lastProbeTime=-1,nextMosquitoTry=0;
-if(debugOnEarly())window.__mosqLog=[];
-function debugOnEarly(){return new URLSearchParams(location.search).has('debug');}
-// Face position and width in visible-window coordinates, or null when no face is tracked.
-function currentFace(){
-  const g=cameraGeometry;if(!g)return null;
-  const last=frameSource.lastFrame,point=cameraOn?(last?.torso??last?.nose??null):(last?.nose??null);
-  const p=point?projectCameraPoint({...point,visibility:1},g):null;if(!p)return null;
-  const span=1-g.crop.left-g.crop.right,w=cameraOn&&cameraTracker?.lastFace?Math.max(.04,cameraTracker.lastFace.fw/span):.12;
-  return {x:p.x,y:p.y,w};
-}
-// A short hint on the arena (the banner slot); it is removed when the mosquito is settled.
-function showHint(text,now){banner=mosquitoHint={text,at:now};}
-let noFaceFeedAt=-Infinity;
-// `chat` = the cooldown was charged by a real !mosquito, so a failed start gives it back; the button and the round planner never charged one.
-function startFaceMosquito({chat=false}={}){
-  const refund=()=>{if(chat)game.refundFaceMosquito();};
-  if(mosquito.active||game.mode!=='PLAYING'){refund();return false;}
-  const face=currentFace();if(!face){const t=performance.now();if(t-noFaceFeedAt>5000){noFaceFeedAt=t;feed('No face yet','The mosquito needs a tracked face');}refund();return false;}
-  probe.reset();swatFrames=0;lastProbeTime=-1;
-  if(!mosquito.start(performance.now(),face))return false;
-  mosquitoDemo=mosquitoCount++===0;landedHinted=false;
-  game.setFaceMosquitoBusy(true);feed(mosquitoDemo?'Practice mosquito!':'Mosquito!','It is coming for your face: dodge it, swat it, or slap your face when it lands');
-  if(!swatLearned)showHint('TILT YOUR HEAD TO DODGE',performance.now());
-  return true;
-}
-// One step of the mosquito per frame: look for motion where it is (camera only), advance it, and book the result with the game.
-// Motion around (p.x,p.y) in window coordinates, radius r in window widths; null when the camera has not produced a new frame since the last call.
-// The screen redraws at 60 Hz but the camera delivers about 30 frames a second: only a NEW camera frame is compared, otherwise two identical frames
-// would read as "no motion" and a real slap could never add up to two frames in a row.
-function motionLevelAt(p,r){
-  const video=$('#camera-video');
-  if(!cameraOn||!cameraGeometry||video.readyState<2||video.currentTime===lastProbeTime)return null;
-  try{
-    lastProbeTime=video.currentTime;
-    probeCtx.drawImage(video,0,0,64,36);
-    const gray=grayFromRgba(probeCtx.getImageData(0,0,64,36).data,64,36);if(gray)probe.push(gray);
-    const c=canvasPointToSource(visiblePointToCanvas({x:Math.max(.02,Math.min(.98,p.x)),y:Math.max(.02,Math.min(.98,p.y))},cameraGeometry),cameraGeometry);   // a mosquito at the very edge is still looked for
-    return c?probe.level({x:c.x,y:c.y,r:r*(1-cameraGeometry.crop.left-cameraGeometry.crop.right)}):0;
-  }catch(error){if(!probeFailed){probeFailed=true;console.error('ERROR motion probe',error);}return 0;}   // a failed read must not freeze the mosquito
-}
-// With ?debug=1 the face motion is measured all the time (no mosquito needed) so a slap, a clap or a wave can be seen and the threshold calibrated.
-function debugFaceMotion(now){
-  if((!debugOn&&!swatTest.checked)||!cameraOn||mosquito.active)return;
-  const face=currentFace();if(!face)return;
-  const level=motionLevelAt(face,face.w);if(level===null)return;
-  showSwat(level);debugStats.level=level;debugStats.peak=Math.max(debugStats.peak*.97,level);
-  if(window.__mosqLog&&window.__mosqLog.length<4000)window.__mosqLog.push([Math.round(now),+level.toFixed(3),'FACE',+face.x.toFixed(3),+face.y.toFixed(3)]);
-}
-function stepMosquito(now,snapshot){
-  if(!mosquito.active)return;
-  if(!['PLAYING','TRACKING_LOST','RECOVERING'].includes(snapshot.mode)){mosquito.cancel(now);game.setFaceMosquitoBusy(false);if(mosquitoHint&&banner===mosquitoHint)banner=null;mosquitoHint=null;return;}
-  const snap=mosquito.snapshot(now);let level=0;
-  if(swatFrames>0){swatFrames--;level=1;}                                   // the on-screen Swat button (no camera needed)
-  else if(cameraOn&&cameraGeometry)level=motionLevelAt(snap.probe,snap.probe.r);
-  if(level!==null){showSwat(level);debugStats.level=level;debugStats.peak=Math.max(debugStats.peak*.97,level);if(window.__mosqLog&&window.__mosqLog.length<4000)window.__mosqLog.push([Math.round(now),+level.toFixed(3),snap.state,+snap.x.toFixed(3),+snap.y.toFixed(3)]);}
-  let result=mosquito.update(now,currentFace(),level);
-  if(result){
-    game.setFaceMosquitoBusy(false);
-    if(mosquitoHint&&banner===mosquitoHint)banner=null;mosquitoHint=null;
-    // The first mosquito of a round is a demonstration: a bite is not booked as a bite (no HP or score lost) and the feed explains what to do.
-    if(mosquitoDemo&&result.outcome==='BITE'){
-      result={...result,outcome:'UNKNOWN',reason:'TUTORIAL_BITE'};
-      feed('Practice mosquito: no penalty','Slap your face when it lands, or tilt your head so it misses');
-    }
-    if(result.outcome==='SWAT')swatLearned=true;
-    const booked=game.settleFaceMosquito(result);
-    if(booked){
-      lastEffect={outcome:booked.outcome,at:now,scoreDelta:booked.scoreDelta,x:snap.x,y:snap.y};
-      if(booked.outcome==='SWAT'&&cameraGeometry){const v=cameraGeometry.visible;catchFx.spawn(v.x+snap.x*v.width,v.y+snap.y*v.height,now,v.width/5);}
-      if(booked.outcome==='BITE')biteAt=now;
-    }
-  }
-}
 loadSprites().then(sprites=>{fxSprites=sprites;});
 const game=new MatrixGame({onEvent:event=>{
   if(event.type==='result'){
     if(event.outcome==='CATCH'&&cameraGeometry){
       // Burst where the item was caught: at its target x on the floor line.
       const v=cameraGeometry.visible,column=(event.cells?.[0]??event.cell-3),size=v.width/3;
-      const at={x:v.x+(dropTarget(column)??.5)*v.width,y:v.y+DROP_FLOOR*v.height};catchFx.spawn(at.x,at.y,performance.now(),size*.5);
+      const at={x:v.x+(Number.isFinite(event.landX)?event.landX:(dropTarget(column)??.5))*v.width,y:v.y+DROP_FLOOR*v.height};catchFx.spawn(at.x,at.y,performance.now(),size*.5);
     }
-    // x,y (window coordinates, 0..1) say where the effect belongs: the floor spot of a drop; the mosquito sets its own in stepMosquito.
-    const spot=event.kind==='DROP'?{x:dropTarget(event.cells?.[0]??event.cell-3)??.5,y:DROP_FLOOR}:{};
-    lastEffect={outcome:event.outcome,at:performance.now(),scoreDelta:event.scoreDelta??0,...(Number.isFinite(event.combo)?{combo:event.combo}:{}),...spot};
-    const sound=OUTCOME_SOUND[event.outcome];if(sound)sfx.play(sound,{combo:event.combo});
-    if(event.kind==='FACE_MOSQUITO')sfx.mosquitoLoop.stop();
-    const titles={HIT:'Ouch, hit!',DODGE:'Nice dodge',CATCH:'Caught it!',MISS:'Missed it',BOMB:'Boom! Bomb caught',AVOID:'Bomb dodged',SWAT:'Swatted it!',BITE:'Bitten!'};
+    // x,y (window coordinates, 0..1) say where the effect belongs: the floor spot of a drop.
+    const spot=event.kind==='DROP'?{x:Number.isFinite(event.landX)?event.landX:(dropTarget(event.cells?.[0]??event.cell-3)??.5),y:DROP_FLOOR}:{};
+    lastEffect={outcome:event.outcome,at:performance.now(),scoreDelta:event.scoreDelta??0,...(Number.isFinite(event.combo)?{combo:event.combo}:{}),...(Number.isFinite(event.points)?{points:event.points}:{}),...spot};
+    ticker.noteResult(event,performance.now());if(event.kind==='DROP')chatScore+=chatPointsFor(event.outcome);
+    const sound=OUTCOME_SOUND[event.outcome];if(sound)sfx.play(sound,{combo:event.combo});if(event.outcome==='CATCH'){sfx.play('swish');if(event.label)thankSupporter(event.label);else playVoice(event.points);}
+    const titles={HIT:'Ouch, hit!',DODGE:'Nice dodge',CATCH:'Caught it!',MISS:'Missed it',BOMB:'Splat! Pie caught',AVOID:'Pie dodged'};
     feed(titles[event.outcome]??'Undetermined',`${challengeNames[event.kind]??`Target cell ${event.cell}`} · ${event.outcome}`);
-  } else if(event.type==='faceMosquito')startFaceMosquito({chat:true});
-  else if(event.type==='lavaBurn')feed('Lava burn',`HP ${event.hpDelta} · stand to avoid the lava`);
+  } else if(event.type==='lavaBurn')feed('Lava burn',`HP ${event.hpDelta} · stand to avoid the lava`);
   else if(event.type==='ringOut')feed('Character left the arena','Out of bounds');
-}});
+},options:{landJitter:.12,avoidScore:0}});   // theme: dodging a pie scores nothing (a dodge is just not being hit)
 const stabilizer=new PointStabilizer();
 const frameSource=new SyntheticFrameSource({game,maxAge:game.config.maxAge,project:frame=>{
   const out=cameraGeometry?projectCameraFrame(frame,cameraGeometry):{...frame,nose:null,leftShoulder:null,rightShoulder:null};
@@ -193,7 +135,7 @@ const chatTransport=new MockEventSubTransport({adapter,oauth,profile:'chat',onSt
   const labels={CONNECTING:'Local chat connecting',SUBSCRIBING:'Local chat subscribing',ONLINE:'Local chat subscribed',MIGRATING:'Local subscription migrating',RETRYING:'Local chat reconnecting',STOPPED:'Local chat stopped'};
   if(chatMode)$('#connection-badge').textContent=labels[status]??status;
   if(detail==='AUTH_REQUIRED')feed('Simulated authorization expired','Stop and re-authorize');
-},onDelivery:result=>{if(result.accepted)feed('Local chat attack',describeDelivery(result));}});
+},onDelivery:result=>{ticker.noteSupport(result,performance.now());announceSupport(result);ticker.noteReject(result,performance.now());if(result.accepted)feed('Local chat attack',describeDelivery(result));}});
 const popupController=['http://127.0.0.1:4173','http://localhost:4173'].includes(location.origin)?new AuthPopupController({oauth,origin:location.origin,
   openWindow:url=>window.open(url,'streamer-mayhem-local-auth','popup,width=520,height=420'),
   onState:state=>{
@@ -214,31 +156,34 @@ const transport=new MockEventSubTransport({adapter,onStatus:(status,detail)=>{
   if(result.accepted)feed('Local mock attack',describeDelivery(result));
 }});
 
-// Synthetic state is relayed only through the same loopback server, in memory.
-try {
-  if(typeof crypto?.getRandomValues!=='function')throw new Error('SECURE_RANDOM_UNAVAILABLE');
-  const bytes=new Uint8Array(16);crypto.getRandomValues(bytes);overlaySession=Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('');
-  $('#overlay-link').removeAttribute('href');
-} catch {overlaySession=null;$('#overlay-link').removeAttribute('href');$('#overlay-hint').textContent='This browser cannot sync the synthetic pages.';}
-function publishOverlay(snapshot,{force=false}={}){
-  if(!overlayEnabled||!overlaySession||(overlayInFlight&&!force))return;
-  const sourcePoint=snapshot.mode==='PLAYING'&&frameSource.running&&cameraGeometry?frameSource.lastFrame?.nose??null:null;
-  const viewer=lastViewer&&performance.now()-lastViewer.at<4000?lastViewer.name:undefined;
-  const message=makeOverlayState({session:overlaySession,sequence:++overlaySequence,geometry:cameraGeometry,snapshot:{...snapshot,...(viewer?{viewer}:{})},sourcePoint});
-  overlayInFlight++;fetch('./__overlay/state',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(message),credentials:'omit',redirect:'error',signal:AbortSignal.timeout(1000)}).then(response=>{if(!response.ok)throw new Error('RELAY_UNAVAILABLE');if(overlayEnabled)$('#overlay-hint').textContent='Synthetic data sent; keep this controller page open.';}).catch(()=>{if(overlayEnabled)$('#overlay-hint').textContent='Cannot reach the local overlay relay; check the local server.';}).finally(()=>{overlayInFlight--;});
-}
-
-function stopOverlaySync(){
-  if(!overlayEnabled)return;overlayEnabled=false;
-  fetch('./__overlay/state',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:OVERLAY_CLOSED_TYPE,session:overlaySession,sequence:++overlaySequence}),credentials:'omit',redirect:'error',keepalive:true}).catch(()=>{});
-  $('#overlay-link').removeAttribute('href');$('#overlay-toggle').textContent='Enable overlay sync';$('#overlay-hint').textContent='Overlay sync stopped.';
-}
-$('#overlay-toggle').addEventListener('click',()=>{
-  if(overlayEnabled){stopOverlaySync();return;}
-  if(!overlaySession){$('#overlay-hint').textContent='This browser cannot sync the synthetic pages.';return;}
-  overlayEnabled=true;const link=new URL('./overlay.html',location.href);link.search=new URLSearchParams({mode:'synthetic',session:overlaySession}).toString();$('#overlay-link').href=link.href;
-  $('#overlay-toggle').textContent='Stop overlay sync';$('#overlay-hint').textContent='Connecting to the local overlay.';publishOverlay(game.tick());
+// Synthetic state is relayed only through the same loopback server, in memory (session, sequence and POSTs live in overlay_publisher.mjs).
+const overlay=createOverlayPublisher({
+  getGeometry:()=>cameraGeometry,
+  // The same anchor the arena draws the hoop at: the torso point when the camera is on, otherwise the nose.
+  getSourcePoint:()=>{
+    if(!frameSource.running||!cameraGeometry)return null;
+    const last=frameSource.lastFrame,point=cameraOn?(last?.torso??last?.nose??null):(last?.nose??null);
+    return point?{x:point.x,y:point.y,visibility:Number.isFinite(point.visibility)?point.visibility:1}:null;
+  },
+  getExtras:snapshot=>{const t=performance.now();return buildOverlayExtras({entries:ticker.live(t),now:t,score:snapshot.score,chatScore,banner,roundLeftMs:roundLeftNow});},
+  getViewer:()=>lastViewer&&performance.now()-lastViewer.at<4000?lastViewer.name:undefined,
+  baseHref:location.href,storage:safeStorage(),
+  onStatus:(code,text)=>{$('#overlay-hint').textContent=text;if(code==='UNAVAILABLE')$('#overlay-link').removeAttribute('href');}
 });
+$('#overlay-link').removeAttribute('href');
+$('#overlay-note').textContent=overlay.session()===null?'':overlay.persistent()?'The overlay link stays the same when you reload this page, so the OBS Browser Source does not need to be pasted again.':'This browser cannot store the link: it changes every time this page loads, so paste it into OBS again after a reload.';
+const publishOverlay=(snapshot,options)=>overlay.publish(snapshot,options);
+function stopOverlaySync(){
+  if(!overlay.disable())return;
+  $('#overlay-link').removeAttribute('href');$('#overlay-toggle').textContent='Enable overlay sync';
+}
+function startOverlaySync(){
+  if(!overlay.enable())return;
+  $('#overlay-link').href=overlay.link();$('#overlay-toggle').textContent='Stop overlay sync';publishOverlay(game.tick());
+}
+$('#overlay-toggle').addEventListener('click',()=>{if(overlay.isEnabled())stopOverlaySync();else startOverlaySync();});
+$('#overlay-auto').checked=overlay.auto();
+$('#overlay-auto').addEventListener('change',()=>{overlay.setAuto($('#overlay-auto').checked);});
 
 function addSyntheticFrame(){
   const visible=tracking&&cameraGeometry?projectCameraPoint({...player,visibility:1},cameraGeometry):null;
@@ -277,8 +222,8 @@ function updateScreen(snapshot){
   $('#frame-source-toggle').textContent=frameSource.running?'Simulate frame interruption':'Restore synthetic frames';
 }
 
-// Camera tracking: the page shows the mirrored camera image under the grid; poses come from the in-browser model.
-// "Center me": the 3x3 grid covers a window about three face widths wide around the seated streamer instead of the whole camera frame,
+// Camera tracking: the page shows the mirrored camera image under the play area; poses come from the in-browser model.
+// "Center me": the play area covers a window about six face widths wide around the seated streamer instead of the whole camera frame,
 // so leaning one face width changes the column. Same fraction on both axes keeps the 16:9 aspect (a digital zoom).
 const NO_CROP=Object.freeze({left:0,right:0,top:0,bottom:0});
 let cameraCrop=NO_CROP;
@@ -301,14 +246,14 @@ function syncCameraGeometry(){
 const GRACE_MS=200;let lastGood=null;
 const autoFrame=new AutoFrame();
 // Optional readout for real-camera tests: open the page with ?debug=1. It shows why a drop was UNKNOWN (low score, slow frames, no face).
-const debugStats={frames:0,since:performance.now(),fps:0,score:null,shownAt:0,level:0,peak:0};
+const debugStats={frames:0,since:performance.now(),fps:0,score:null,shownAt:0};
 const debugOn=new URLSearchParams(location.search).has('debug');
 function updateDebug(now,snapshot){
   if(!debugOn||now-debugStats.shownAt<250)return;
   const dt=(now-debugStats.since)/1000;if(dt>=1){debugStats.fps=debugStats.frames/dt;debugStats.frames=0;debugStats.since=now;}
   debugStats.shownAt=now;const v=cameraGeometry?.visible,x=v&&lastMarker?(lastMarker.x-v.x)/v.width:null,lane=dropColumn(x);
   const el=$('#camera-debug');el.hidden=false;
-  el.textContent=`score ${debugStats.score===null?'none':debugStats.score.toFixed(2)} · fps ${debugStats.fps.toFixed(1)} · x ${x===null?'—':Math.round(x*100)+'%'} · lane ${lane===null?'—':['L','C','R'][lane-1]} · ${snapshot.mode}`+((mosquito.active||debugOn&&cameraOn)?` · motion ${debugStats.level.toFixed(2)} peak ${debugStats.peak.toFixed(2)}`:'')+(snapshot.lastResult?.kind==='DROP'?` · judged ${snapshot.lastResult.outcome} x ${snapshot.lastResult.sampledX===null?'—':Math.round(snapshot.lastResult.sampledX*100)+'%'} caught ${snapshot.lastResult.caught===null?'—':snapshot.lastResult.caught}`:'');
+  el.textContent=`score ${debugStats.score===null?'none':debugStats.score.toFixed(2)} · fps ${debugStats.fps.toFixed(1)} · x ${x===null?'—':Math.round(x*100)+'%'} · lane ${lane===null?'—':['L','C','R'][lane-1]} · ${snapshot.mode}`+(snapshot.lastResult?.kind==='DROP'?` · judged ${snapshot.lastResult.outcome} x ${snapshot.lastResult.sampledX===null?'—':Math.round(snapshot.lastResult.sampledX*100)+'%'} caught ${snapshot.lastResult.caught===null?'—':snapshot.lastResult.caught}`:'');
 }
 function pollCamera(){
   syncCameraGeometry();
@@ -317,8 +262,9 @@ function pollCamera(){
   debugStats.frames++;debugStats.score=result.points?.torso?.visibility??null;
   // Automatic digital zoom: frame the face once it is steady, and again only if the person moves much closer or farther.
   if(cameraTracker.kind==='face'&&$('#camera-auto').checked){
-    const crop=autoFrame.update(cameraTracker.lastFace,performance.now());
-    if(crop){setCameraCrop(crop);$('#camera-status').textContent='Auto-framed: the grid now covers about six face widths around you, with room above your head; lean a little to change column.';}
+    cropGate.offer(autoFrame.update(cameraTracker.lastFace,performance.now()));
+    const crop=cropGate.take(game.attacks.length>0);   // never re-frame under a falling ball: that would clear it
+    if(crop){setCameraCrop(crop);$('#camera-status').textContent='Auto-framed: the play area now covers about six face widths around you, with room above your head; lean a little to change column.';}
   }
   // A tilted head can drop the face for a few frames; keep the last position for a short grace period instead of declaring tracking lost.
   if(result.points){lastGood={points:result.points,at:performance.now()};frameSource.capture(result.points);}
@@ -353,7 +299,7 @@ function setCameraMode(on){
 }
 async function toggleCamera(){
   const button=$('#camera-toggle');
-  if(cameraOn||cameraTracker){cameraTracker?.stop();cameraTracker=null;mosquito.cancel(performance.now());game.setFaceMosquitoBusy(false);probe.reset();lastProbeTime=-1;swatFrames=0;const sm=$('#swat-meter');if(sm)sm.hidden=true;autoFrame.reset();$('#camera-center').disabled=true;$('#camera-center-reset').disabled=true;cameraCrop=NO_CROP;$('#camera-zoom').disabled=true;$('#camera-zoom-reset').disabled=true;$('#camera-facing').disabled=false;$('#camera-kind').disabled=false;setCameraMode(false);$('#camera-status').textContent='Camera off. Keyboard or mouse input is used.';return;}
+  if(cameraOn||cameraTracker){cameraTracker?.stop();cameraTracker=null;autoFrame.reset();$('#camera-center').disabled=true;$('#camera-center-reset').disabled=true;cameraCrop=NO_CROP;$('#camera-zoom').disabled=true;$('#camera-zoom-reset').disabled=true;$('#camera-facing').disabled=false;$('#camera-kind').disabled=false;setCameraMode(false);$('#camera-status').textContent='Camera off. Keyboard or mouse input is used.';return;}
   button.disabled=true;$('#camera-status').textContent='Starting camera and loading the pose model…';
   const labels={CAMERA_DENIED:'Camera permission was denied. Allow the camera for this page and try again.',CAMERA_UNSUPPORTED:'This browser cannot open a camera here. Use http://localhost:4173/.',CAMERA_BUSY:'Another app (OBS, a call, another tab) is using this camera. Close it and try again.',CAMERA_NOT_FOUND:'No camera was found. Connect one and try again.',MODEL_FAILED:'The pose model could not start.'};
   const facing=$('#camera-facing').value,kind=$('#camera-kind').value;cameraMirror=$('#camera-mirror').checked;cameraKindLabel=kind==='face'?'CAMERA FACE TRACKING':'CAMERA POSE TRACKING';
@@ -369,12 +315,12 @@ $('#camera-center').addEventListener('click',()=>{
   if(!cameraTracker)return;
   const crop=cameraTracker.kind==='face'?centerCrop(cameraTracker.lastFace):null;
   if(!crop){$('#camera-status').textContent='No face found yet. Sit in view, then try again.';return;}
-  setCameraCrop(crop);autoFrame.adopt(cameraTracker.lastFace);$('#camera-status').textContent='Centered. The grid now covers about six face widths around you, with room above your head; lean a little to change column.';
+  setCameraCrop(crop);autoFrame.adopt(cameraTracker.lastFace);$('#camera-status').textContent='Centered. The play area now covers about six face widths around you, with room above your head; lean a little to change column.';
 });
-// Mirror can be flipped while the camera runs; the grid, lanes and backdrop are rebuilt for the new orientation.
+// Mirror can be flipped while the camera runs; the play area, lanes and backdrop are rebuilt for the new orientation.
 $('#camera-mirror').addEventListener('change',()=>{cameraMirror=$('#camera-mirror').checked;if(cameraOn)setCameraCrop(cameraCrop);});
 $('#camera-center-reset').addEventListener('click',()=>{$('#camera-auto').checked=false;autoFrame.reset();setCameraCrop(null);$('#camera-status').textContent='View reset to the whole camera frame.';});
-// Full screen keeps the whole 3x3 grid on screen (phone browser bars otherwise cut off the bottom row).
+// Full screen keeps the whole play area on screen (phone browser bars otherwise cut off the bottom row).
 $('#fullscreen').addEventListener('click',async()=>{
   const frame=document.querySelector('.arena-frame');
   try{if(document.fullscreenElement)await document.exitFullscreen();else await frame.requestFullscreen();}
@@ -396,50 +342,46 @@ function loop(){
   finally{animationId=requestAnimationFrame(loop);}
 }
 let loopFailed=false;
-// Sound that follows the game state each frame: a warning when a bomb appears, the mosquito's hum and its landing countdown.
-function updateSound(snapshot,mosquitoSnap){
+// Sound that follows the game state each frame: a warning when a pie appears.
+function updateSound(snapshot){
   const ids=new Set();
   for(const attack of snapshot.attacks){
+    if(attack.kind==='DROP'&&attack.variant!=='BOMB'&&!shotHeard.has(attack.eventId)){shotHeard.add(attack.eventId);sfx.play('shoot');if(shotHeard.size>200)shotHeard.delete(shotHeard.values().next().value);}
     if(attack.variant!=='BOMB')continue;
     ids.add(attack.eventId);
     if(!warnedBombs.has(attack.eventId)){warnedBombs.add(attack.eventId);sfx.play('bombWarn',{leadMs:(1-(attack.progress??0))*(attack.due-attack.start),skipDedupe:true});}
   }
   for(const id of warnedBombs)if(!ids.has(id))warnedBombs.delete(id);
-  if(!mosquitoSnap){sfx.mosquitoLoop.stop();landedHinted=false;return;}
-  if(!sfx.mosquitoLoop.active)sfx.mosquitoLoop.start();
-  const face=currentFace(),landed=mosquitoSnap.state==='LANDED';
-  sfx.mosquitoLoop.update({dist:face?Math.min(1,mosquitoDistance(mosquitoSnap,face)/.6):1,landed,progress:mosquitoSnap.landedProgress});
-  if(landed&&!landedHinted){landedHinted=true;if(!swatLearned){showHint('SLAP YOUR FACE!',performance.now());feed('It landed!','Slap your face now');}}
+}
+// OBS camera source numbers (flip + crop in pixels) that line the stream up with the grid; text only, refreshed with the overlay publish tick.
+let obsSetupText='';
+function showObsSetup(){
+  const setup=cameraOn?obsCameraSetup(cameraGeometry,{auto:$('#camera-auto').checked&&cameraTracker?.kind==='face'}):null;
+  const text=setup?setup.text:'OBS camera source setup appears here once the camera is on.';
+  if(text!==obsSetupText){obsSetupText=text;$('#obs-align').textContent=text;}
 }
 function loopBody(){
   const now=performance.now();if(cameraOn)pollCamera();else addSyntheticFrame();let snapshot=game.tick();
-  // Automatic waves (local game logic): irregular gold items and bombs while the round is playing and the box is ticked.
+  // Automatic waves (local game logic): irregular balls and pies while the round is playing and the box is ticked.
   // A round is 75 s: after that no new drops start, and when the last one has landed the round ends with a summary banner.
   if(autoDrops.checked&&waves.difficulty(now)>=1)roundEnding=true;
   if(roundEnding&&(snapshot.attacks.length===0||now>waves.startedAt+waves.roundMs+8000)){
     roundEnding=false;autoDrops.checked=false;const grade=gradeFor(snapshot.score);
-    banner={text:`ROUND OVER · SCORE ${snapshot.score}`,at:now,grade};feed('Round over',`Score ${snapshot.score}${grade?` · grade ${grade}`:''}`);
+    banner={text:`ROUND OVER · SCORE ${snapshot.score}${snapshot.score>chatScore?' · STREAMER WINS':snapshot.score<chatScore?' · CHAT WINS':''}`,at:now,grade};feed('Round over',`Score ${snapshot.score}${grade?` · grade ${grade}`:''} · ${snapshot.score>chatScore?'streamer wins':snapshot.score<chatScore?'chat wins':'a draw'} (${snapshot.score}–${chatScore})`);
     sfx.play('roundEnd');if(session.phase==='running')session.phase='over';syncStart();
   }
-  // Once per round, about two thirds in, the mosquito comes for the face; gold items and bombs wait while it is around.
-  // (once per round, retried about once a second until a face is tracked and no gold or bomb is still falling)
-  if(autoDrops.checked&&!roundEnding&&!mosquitoPlanned&&waves.difficulty(now)>=.66&&snapshot.mode==='PLAYING'&&snapshot.attacks.length===0&&now>=nextMosquitoTry){
-    nextMosquitoTry=now+1000;if(startFaceMosquito())mosquitoPlanned=true;
-  }
-  stepMosquito(now,snapshot);debugFaceMotion(now);
-  const mosquitoNow=mosquito.snapshot(now);updateSound(snapshot,mosquitoNow);stepSession(now);
-  if(autoDrops.checked&&!roundEnding&&!mosquito.active&&snapshot.mode==='PLAYING'&&(game.connection==='ONLINE'||(ircChat&&ircChat.status!=='STOPPED'))){
-    // From two thirds in, while a face is tracked and the mosquito has not come yet, stop new drops so the screen can empty for it.
-    const holdForMosquito=!mosquitoPlanned&&waves.difficulty(now)>=.66&&Boolean(currentFace());
-    const next=holdForMosquito?null:waves.update(now,snapshot.attacks.length);
-    if(next){const id=`wave-${++waveSerial}`;game.receiveWaveDrop({notificationId:id,messageId:id,actorId:id,receivedAt:performance.now()},next);snapshot=game.tick();}
+  stepStars(now);
+  updateSound(snapshot);stepSession(now);
+  if(autoDrops.checked&&!roundEnding&&snapshot.mode==='PLAYING'&&(game.connection==='ONLINE'||(ircChat&&ircChat.status!=='STOPPED'))){
+    const next=waves.update(now,snapshot.attacks.length);
+    if(next){const id=`wave-${++waveSerial}-${next.tag??0}`;game.receiveWaveDrop({notificationId:id,messageId:id,actorId:id,receivedAt:performance.now()},next);snapshot=game.tick();}
   }
   const last=frameSource.lastFrame,anchor=cameraOn?(last?.torso??last?.nose??null):(last?.nose??null);
-  const roundLeftMs=autoDrops.checked&&!roundEnding?Math.max(0,Math.round(waves.roundMs-(now-waves.startedAt))):undefined;
-  const drawn=drawArena(ctx,{...snapshot,roundLeftMs},anchor,{now,lastEffect,banner,mosquito:mosquitoNow,biteAt,showMarker:debugOn,tracking:frameSource.running&&Boolean(anchor),geometry:cameraGeometry,
-    backdrop:cameraOn?drawCameraBackdrop:null,marker:cameraOn});lastMarker=drawn?.position??null;
+  const roundLeftMs=autoDrops.checked&&!roundEnding?Math.max(0,Math.round(waves.roundMs-(now-waves.startedAt))):undefined;roundLeftNow=roundLeftMs;
+  const drawn=drawArena(ctx,{...snapshot,roundLeftMs},anchor,{now,lastEffect,banner,showMarker:false,tracking:frameSource.running&&Boolean(anchor),geometry:cameraGeometry,
+    backdrop:cameraOn?drawCameraBackdrop:null,marker:cameraOn,ticker:{entries:ticker.live(now),versus:{streamer:snapshot.score??0,chat:chatScore}}});lastMarker=drawn?.position??null;
   catchFx.draw(ctx,now,fxSprites,cameraGeometry?.visible??null);updateDebug(now,snapshot);updateScreen(snapshot);
-  if(now-lastOverlayUpdate>=100){lastOverlayUpdate=now;publishOverlay(snapshot);}
+  if(now-lastOverlayUpdate>=100){lastOverlayUpdate=now;publishOverlay(snapshot);showObsSetup();}
 }
 
 // One-click start: camera on (face mode, mirrored, auto-framed) -> 3-2-1 -> auto drops. The same button (or Esc) stops everything and turns the camera off.
@@ -469,7 +411,6 @@ async function startPlaying(){
 async function stopPlaying(){
   session.token++;session.phase='idle';session.shown=null;
   autoDrops.checked=false;autoDrops.dispatchEvent(new Event('change'));banner=null;
-  mosquito.cancel(performance.now());game.setFaceMosquitoBusy(false);sfx.mosquitoLoop.stop();
   if(cameraOn||cameraTracker)await toggleCamera();
   syncStart();startMessage('Stopped. Press Start playing to go again.');
 }
@@ -480,7 +421,7 @@ function stepSession(now){
   if(left>=1){if(session.shown!==left){session.shown=left;banner={text:String(left),at:now,big:true};sfx.play('tick',{freq:1200,skipDedupe:true});}return;}
   session.phase='running';session.shown=null;
   autoDrops.checked=true;autoDrops.dispatchEvent(new Event('change'));banner={text:'GO!',at:now,big:true};   // the change handler clears the banner, so GO! is set after it
-  syncStart();startMessage('Catch the gold, dodge the bombs. Esc stops.');
+  syncStart();startMessage('Catch the balls in the hoop, dodge the pies. Esc stops.');
 }
 $('#start-playing').addEventListener('click',()=>{
   if(sfx.enabled&&!sfx.unlocked)sfx.unlock();                                       // a remembered "sound on" needs one click per page load
@@ -511,11 +452,14 @@ function send(text){
   const lava=/^!lava(?:\s+(0\.[1-8]))?$/i.exec(command);
   if(lava){sendChallenge('LAVA',lava[1]?Number(lava[1]):.45);return;}
   const serial=++eventId;
+  // Simulated cheer for trying the supporter features without a real one: "Cheer100 !drop 2" is a command with 100 Bits, "Cheer100" alone is only a cheer.
+  const cheer=/^cheer(\d{1,6})\b\s*(.*)$/i.exec(text);
   const result=adapter.ingest(syntheticChat({notificationId:`notification-${serial}`,messageId:`message-${serial}`,
-    actorId:`viewer-${serial%16}`,text}));
+    actorId:`viewer-${serial%16}`,chatterName:['Mika','Jojo','Pixel','Nova','Bao','Luna','Kai','Momo'][serial%8],text:cheer?cheer[2]:text,...(cheer?{cheerBits:Number(cheer[1])}:{})}));
+  if(cheer){ticker.noteSupport(result,performance.now());announceSupport(result);ticker.noteReject(result,performance.now());feed('Simulated cheer',`${result.viewer??'viewer'} · ${cheer[1]} bits (simulated)`);}
   const feedback=$('#command-feedback');
-  if(result.accepted&&result.kind==='DROP'){feedback.textContent=`Synthetic command sent: drop in column ${result.cell-3}`;feed('Viewer drop',`!drop ${result.cell-3} · 1.5 s to get under it`);}
-  else if(result.accepted&&result.kind==='FACE_MOSQUITO'){feedback.textContent='Synthetic command sent: mosquito';}
+  if(result.accepted&&result.viewer&&result.eventId!==undefined)ticker.noteShot(result.eventId,result.viewer,performance.now(),result.supporter);
+  if(result.accepted&&result.kind==='DROP'){feedback.textContent=`Synthetic command sent: drop in column ${result.cell-3}`;feed('Viewer drop',`!drop ${result.cell-3} · get the hoop under the ball`);}
   else if(result.accepted){feedback.textContent=`Synthetic command sent: cell ${result.cell}`;feed('Viewer attack',describeDelivery(result));}
   else feedback.textContent=reasons[result.reason]??'Event could not be handled';
 }
@@ -545,8 +489,6 @@ function sendChallenge(kind,level=.45){
   if(result.accepted)feed(challengeNames[kind],result.raised?'Raise target level':'Uses synthetic joint controls');
 }
 for(const [id,kind] of [['synthetic-freeze','FREEZE'],['synthetic-lava','LAVA']])$(`#${id}`).addEventListener('click',()=>sendChallenge(kind));
-// The Mosquito button and a typed !mosquito use the same path as real chat: the mosquito that goes for the face.
-$('#synthetic-mosquito').addEventListener('click',()=>send('!mosquito'));
 $('#elbow-spread').addEventListener('input',()=>{poseControls.spread=Number($('#elbow-spread').value)/100;$('#elbow-value').textContent=`${Math.round(poseControls.spread*100)}%`;});
 $('#hip-stand').addEventListener('click',()=>{poseControls.hip=.5;});
 $('#hip-crouch').addEventListener('click',()=>{poseControls.hip=.93;});
@@ -599,7 +541,7 @@ function syncProviderControls(){
   $('#auth-mock-toggle').disabled=busy||mockMode;
   $('#connection').disabled=busy||mockMode||chatMode;
   for(const button of document.querySelectorAll('[data-throw], #chat-input, #chat-form button'))button.disabled=busy;
-  for(const button of document.querySelectorAll('#synthetic-cross,#synthetic-freeze,#synthetic-mosquito,#synthetic-lava'))button.disabled=busy||mockMode||chatMode||Boolean(popupController?.pending);
+  for(const button of document.querySelectorAll('#synthetic-cross,#synthetic-freeze,#synthetic-lava'))button.disabled=busy||mockMode||chatMode||Boolean(popupController?.pending);
 }
 function finishProvider(message){
   const current=providerActivation;if(!current)return;
@@ -618,7 +560,7 @@ function startProvider(mode){
       if(labels[status]){$('#provider-status').textContent=`${prefix}: ${labels[status]}`;$('#connection-badge').textContent=`${prefix}: ${labels[status]}`;}
       if(status==='STOPPED'&&detail)finishProvider(detail==='AUTH_REQUIRED'?'Authorization expired; re-authorize.':'Subscription stopped; re-authorize.');
     },
-    onDelivery:result=>{if(result.accepted)feed(`${prefix}Chat attack`,describeDelivery(result));}
+    onDelivery:result=>{ticker.noteSupport(result,performance.now());announceSupport(result);ticker.noteReject(result,performance.now());if(result.accepted)feed(`${prefix}Chat attack`,describeDelivery(result));}
   });
   const activation=new ProviderActivation({provider,origin:location.origin,
     openWindow:url=>window.open(url,'streamer-mayhem-provider-auth','popup,width=520,height=420'),
@@ -652,7 +594,7 @@ $('#irc-start').addEventListener('click',()=>{
       if(labels[status]){$('#irc-status').textContent=labels[status];$('#connection-badge').textContent=`Twitch chat: ${labels[status]}`;}
       if(status==='STOPPED')stopIrc(`Connection stopped (${detail??'unknown'}); press Connect to retry.`);
     },
-    onDelivery:result=>{if(result.accepted)feed('Twitch chat attack',describeDelivery(result));}});
+    onDelivery:result=>{ticker.noteSupport(result,performance.now());announceSupport(result);ticker.noteReject(result,performance.now());if(result.accepted)feed('Twitch chat attack',describeDelivery(result));}});
   ircChat=chat;adapter.disconnect();syncProviderControls();chat.start();
 });
 
@@ -694,18 +636,21 @@ $('#auth-mock-toggle').addEventListener('click',()=>{
 });
 window.addEventListener('message',event=>{popupController?.handleMessage(event);providerActivation?.handleMessage(event);});
 $('#reset').addEventListener('click',()=>{
-  game.reset();frameSource.reset();waves.reset(performance.now());roundEnding=false;banner=null;mosquitoHint=null;mosquitoCount=0;mosquito.cancel(performance.now());game.setFaceMosquitoBusy(false);mosquitoPlanned=false;player.x=.5;player.y=.5;tracking=true;lastEffect=null;game.start();
+  game.reset();ticker.reset();chatScore=0;frameSource.reset();waves.reset(performance.now());roundEnding=false;banner=null;player.x=.5;player.y=.5;tracking=true;lastEffect=null;game.start();
   if(ircChat)game.setConnection(ircChat.status==='ONLINE');else if(providerActivation)game.setConnection(providerActivation.provider.transport.status==='ONLINE');else if(mockMode||chatMode)game.setConnection((chatMode?chatTransport:transport).status==='ONLINE');else adapter.ingest(syntheticWelcome());
   poseControls.spread=.1;poseControls.hip=.5;poseControls.leftWrist={x:.25,y:.55};poseControls.rightWrist={x:.75,y:.55};
   $('#elbow-spread').value='10';$('#elbow-value').textContent='10%';for(const id of ['elbow-known','wrist-known','hip-known'])$(`#${id}`).checked=true;
   addSyntheticFrame();game.tick();
-  $('#command-feedback').textContent='Try !throw 1–9, !drop 1–3, !bomb 1–3, !freeze, !mosquito or !lava';feed('Round reset','HP and score reset');
+  $('#command-feedback').textContent='Try !drop 1–3 (a ball) or !pie 1–3 (a pie)';feed('Round reset','HP and score reset');
 });
-let hiddenAt=null;
+let hiddenAt=null,hiddenSnapshot=null;
 document.addEventListener('visibilitychange',()=>{
-  if(document.hidden){hiddenAt=performance.now();sfx.suspend();frameSource.stop();if(game.mode==='PLAYING'||game.mode==='TRACKING_LOST'||game.mode==='RECOVERING')game.pause();feed('Game paused','Judging pauses while the page is hidden');const snapshot=game.tick();updateScreen(snapshot);publishOverlay(snapshot,{force:true});}
-  else{if(hiddenAt!==null){const d=performance.now()-hiddenAt;hiddenAt=null;waves.startedAt+=d;waves.nextAt+=d;nextMosquitoTry+=d;}sfx.resume();frameSource.start();stabilizer.reset();}   // back on screen: judging frames may flow again (the game itself still waits for Resume)
+  if(document.hidden){hiddenAt=performance.now();sfx.suspend();frameSource.stop();if(game.mode==='PLAYING'||game.mode==='TRACKING_LOST'||game.mode==='RECOVERING')game.pause();feed('Game paused','Judging pauses while the page is hidden or minimised; the stream overlay shows GAME PAUSED. Keep this page visible (a second screen or a window beside OBS).');const snapshot=game.tick();hiddenSnapshot=snapshot;updateScreen(snapshot);publishOverlay(snapshot,{force:true});}
+  else{hiddenSnapshot=null;if(hiddenAt!==null){const d=performance.now()-hiddenAt;hiddenAt=null;waves.startedAt+=d;waves.nextAt+=d;if(game.mode==='PAUSED')feed('The game paused while this page was hidden','Press Resume to continue');}sfx.resume();frameSource.start();stabilizer.reset();}   // back on screen: judging frames may flow again (the game itself still waits for Resume)
 });
-window.addEventListener('pagehide',()=>{stopOverlaySync();cancelAnimationFrame(animationId);transport.stop();chatTransport.stop();cameraTracker?.stop();popupController?.dispose();providerActivation?.stop();ircChat?.stop();oauth.clear();});
+// A hidden page gets no animation frames, so the frame loop cannot refresh the overlay: repeat the PAUSED snapshot every 2 s (timers still run, slowly) so the relay session
+// stays open and the overlay keeps saying GAME PAUSED. Nothing is judged or advanced here.
+setInterval(()=>{if(document.hidden&&hiddenSnapshot)publishOverlay(hiddenSnapshot,{force:true});},2000);
+window.addEventListener('pagehide',()=>{stopOverlaySync();overlay.remember();cancelAnimationFrame(animationId);transport.stop();chatTransport.stop();cameraTracker?.stop();popupController?.dispose();providerActivation?.stop();ircChat?.stop();oauth.clear();});
 
-syncProviderControls();game.start();addSyntheticFrame();game.tick();adapter.ingest(syntheticWelcome());animationId=requestAnimationFrame(loop);
+syncProviderControls();game.start();addSyntheticFrame();game.tick();adapter.ingest(syntheticWelcome());if(overlay.auto())startOverlaySync();animationId=requestAnimationFrame(loop);
