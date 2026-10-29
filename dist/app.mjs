@@ -40,7 +40,7 @@ let cameraGeometry=createCameraGeometry({canvasWidth:canvas.width,canvasHeight:c
 let eventId=0,tracking=true,lastEffect=null,animationId=0,mockMode=false,chatMode=false,providerActivation=null,configuredProvider=null,ircChat=null,cameraTracker=null,cameraOn=false,cameraMirror=true,cameraKindLabel='CAMERA FACE TRACKING',savedGeometry=null;
 let lastOverlayUpdate=0,roundLeftNow;
 const modeNames={IDLE:'Ready',PLAYING:'Playing',PAUSED:'Paused',TRACKING_LOST:'Tracking lost',RECOVERING:'Getting ready',ROUND_END:'Round over'};
-const reasons={MODE_BUSY:'Finish the current challenge first',POSE_UNKNOWN:'Not enough joints visible or lava at its cap; restore the joint',FREEZE_COOLDOWN:'Freeze is cooling down',GAME_COOLDOWN:'This game is cooling down',INVALID_LEVEL:'Lava level must be between 0.1 and 0.8',INVALID_COMMAND:'Enter !drop 1-3 (a ball) or !pie 1-3 (a pie)',ACTOR_COOLDOWN:'This viewer must wait',GLOBAL_COOLDOWN:'Wait a moment before sending another',QUEUE_FULL:'Attack queue full',OFFLINE:'Simulated chat is offline',NOT_PLAYING:'The game cannot accept attacks now',DUPLICATE:'Duplicate event skipped',INVALID_EVENT:'Malformed simulated event'};
+const reasons={MODE_BUSY:'Finish the current challenge first',POSE_UNKNOWN:'Not enough joints visible or lava at its cap; restore the joint',FREEZE_COOLDOWN:'Freeze is cooling down',GAME_COOLDOWN:'This game is cooling down',INVALID_LEVEL:'Lava level must be between 0.1 and 0.8',INVALID_COMMAND:'Enter !drop 1-3 (a ball) or !pie 1-3 (a pie)',ACTOR_COOLDOWN:'This viewer must wait',PIE_COOLDOWN:'A pie was just thrown; wait for the next window',GLOBAL_COOLDOWN:'Wait a moment before sending another',QUEUE_FULL:'Attack queue full',OFFLINE:'Simulated chat is offline',NOT_PLAYING:'The game cannot accept attacks now',DUPLICATE:'Duplicate event skipped',INVALID_EVENT:'Malformed simulated event'};
 
 function feed(title,detail) {
   const li=document.createElement('li'),dot=document.createElement('span'),body=document.createElement('div');
@@ -117,7 +117,7 @@ const game=new MatrixGame({onEvent:event=>{
     feed(titles[event.outcome]??'Undetermined',`${challengeNames[event.kind]??`Target cell ${event.cell}`} · ${event.outcome}`);
   } else if(event.type==='lavaBurn')feed('Lava burn',`HP ${event.hpDelta} · stand to avoid the lava`);
   else if(event.type==='ringOut')feed('Character left the arena','Out of bounds');
-},options:{landJitter:.12,avoidScore:0,chatThrow:false}});   // theme: dodging a pie scores nothing (a dodge is just not being hit)
+},options:{landJitter:.12,avoidScore:0,chatThrow:false,chatPieGap:4500}});   // theme: dodging a pie scores nothing (a dodge is just not being hit)
 const stabilizer=new PointStabilizer();
 const frameSource=new SyntheticFrameSource({game,maxAge:game.config.maxAge,project:frame=>{
   const out=cameraGeometry?projectCameraFrame(frame,cameraGeometry):{...frame,nose:null,leftShoulder:null,rightShoulder:null};

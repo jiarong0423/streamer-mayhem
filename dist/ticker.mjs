@@ -13,7 +13,7 @@ const SPEED=.055;                       // arena widths per second
 
 // Entry colours by tone. The OBS overlay protocol carries the tone (an enum), never a colour string; both screens look the colour up here.
 export const TONE_COLORS=Object.freeze({SCORE3:'#B58CFF',SCORE2:'#FFB36B',MISS:'#9AA39A',SPLAT:'#FF6B5A',DODGE:'#9BE15D',CHEER:'#FFD23F',REFUSED:'#9AA39A'});
-export const REJECT_TEXT=Object.freeze({ACTOR_COOLDOWN:'WAIT 3S',GLOBAL_COOLDOWN:'TOO FAST',MODE_BUSY:'BUSY',QUEUE_FULL:'BUSY'});
+export const REJECT_TEXT=Object.freeze({ACTOR_COOLDOWN:'WAIT 3S',GLOBAL_COOLDOWN:'TOO FAST',MODE_BUSY:'BUSY',PIE_COOLDOWN:'WAIT PIE',QUEUE_FULL:'BUSY'});
 export const cleanName=cleanViewerName;   // the one shared name cleaner (eventsub_adapter.mjs): no star, no reserved words, no invisible characters
 
 // Name for the browser's speech voice (opt-in): letters, digits, spaces, "_" and "-" only, at most 20 characters; '' when nothing speakable is left.

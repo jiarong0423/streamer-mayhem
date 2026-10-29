@@ -57,6 +57,7 @@ The suite reports 382 tests; on 30 Oct all 382 passed in a run where loopback li
 ## Third-party assets
 - MediaPipe Tasks Vision and models (Apache-2.0): `dist/vendor/mediapipe/`, see its `NOTICE.md` for sources and checksums.
 - Three sparkle sprites from the Kenney Particle Pack by Kenney (https://kenney.nl/), license CC0 (public domain; credit is optional and given here): `dist/vendor/kenney-particles/`, with the license file and checksums in its `NOTICE.md`. They draw the catch burst effect.
+- StreamerMayhem's own code is released under the MIT License (see `LICENSE`). Third-party parts keep their own licenses, listed above and in `dist/voice/NOTICE.md`.
 - Announcer voice clips (`dist/voice/`): generated locally with Kokoro-82M (Apache-2.0), see `dist/voice/NOTICE.md`.
 
 ## Layout

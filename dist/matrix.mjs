@@ -58,7 +58,7 @@ export class MatrixGame {
   constructor({ clock = () => performance.now(), onEvent = () => {}, options = {} } = {}) {
     this.clock = clock;
     this.onEvent = onEvent;
-    this.config = { maxAge: 250, confidence: .55, warning: 500, crossWarning: 1500, dropFall: 2500, dropScore: 25, bombPenalty: 25, avoidScore: 10, landJitter: 0, chatThrow: true, recovery: 1000,
+    this.config = { maxAge: 250, confidence: .55, warning: 500, crossWarning: 1500, dropFall: 2500, dropScore: 25, bombPenalty: 25, avoidScore: 10, landJitter: 0, chatThrow: true, chatPieGap: 0, recovery: 1000,
       actorCooldown: 3000, globalCooldown: 400, maxAttacks: 8, ringTime: 1000,
       ringDamage: 10, damage: 15, dodgeScore: 25, freezeDamage:12, freezeScore:100, freezeCooldown:8000,
       lavaDamage:5,lavaScore:75,actionCooldown:8000,
@@ -88,7 +88,7 @@ export class MatrixGame {
     this.outSince = null; this.outPenalized = false; this.recoveryUntil = null;
     // Resetting a round must not make an already-delivered chat message new again.
     this.notifications ??= new Map(); this.messages ??= new Map(); this.actors = new Map();
-    this.lastGlobal = -Infinity; this.lastFreeze=-Infinity;this.lastActions=new Map(); this.pausedFrom = null;this.freeze.reset();this.actionGame.reset();
+    this.lastGlobal = -Infinity; this.lastChatPie=-Infinity; this.lastFreeze=-Infinity;this.lastActions=new Map(); this.pausedFrom = null;this.freeze.reset();this.actionGame.reset();
   }
 
   emit(type, detail = {}) { this.onEvent({ type, wallTime: this.wall, gameTime: this.gameTime, ...detail,
@@ -160,7 +160,13 @@ export class MatrixGame {
     const drop = parseDropCommand(event?.text);
     if (drop !== null) return this.#receiveAttack(event, {cell:drop + 3, kind:'DROP', cells:dropCells(drop), warning:this.config.dropFall});
     const bomb = parseBombCommand(event?.text);
-    if (bomb !== null) return this.#receiveAttack(event, {cell:bomb + 3, kind:'DROP', variant:'BOMB', cells:dropCells(bomb), warning:this.config.dropFall});
+    if (bomb !== null) {
+      // chatPieGap: two accounts taking turns (actor cooldown 3 s, a pie falls 2.5 s) could keep a pie on screen forever and the ball/pie stagger rule would then refuse every ball
+      if (this.config.chatPieGap > 0 && this.gameTime - this.lastChatPie < this.config.chatPieGap) return {accepted:false, reason:'PIE_COOLDOWN'};
+      const delivery = this.#receiveAttack(event, {cell:bomb + 3, kind:'DROP', variant:'BOMB', cells:dropCells(bomb), warning:this.config.dropFall});
+      if (delivery?.accepted) this.lastChatPie = this.gameTime;
+      return delivery;
+    }
     // chatThrow:false (the basketball app) refuses the legacy 3x3 `!throw` from chat: it bypasses the ball and pie scoring
     const cell = this.config.chatThrow === false ? null : parseMatrixCommand(event?.text);
     return this.#receiveAttack(event, cell === null ? null : {cell, warning:this.config.warning});
