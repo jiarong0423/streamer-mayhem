@@ -13,6 +13,17 @@ A Twitch interactive game for a seated streamer, themed as basketball: chat shoo
 - **OBS overlay.** A transparent OBS Browser Source page (it is not a Twitch Extension) receives game state over a local relay and draws a subset of the game page on top of the streamer's camera. It does not yet show everything the game page shows.
 - **Twitch connection.** Two paths feed the same game rules. (1) A login-free path reads a public channel's chat anonymously over Twitch's IRC WebSocket (`dist/irc_anonymous.mjs`, read-only, no account or Twitch application, never sends messages). It was observed to work, but anonymous IRC reading is not documented by Twitch, so it is not claimed as officially supported; Twitch's preferred route for reading chat is EventSub. Use it only on your own channel or one whose owner agreed. It has a join timeout, a 6 minute idle limit and endless reconnect. (2) OAuth implicit grant plus an EventSub WebSocket `channel.chat.message` subscription, with reconnect, keepalive watchdog and revocation handling. The token stays in page memory, is never written to disk or logs, and expires (re-authorize then). Chat and names are handled in memory only. Not affiliated with or endorsed by Twitch.
 
+## Screenshots
+
+Frames from the demo video (https://youtu.be/e_pY9SIB8Wc). The game footage is a local recording, not a live broadcast; the chat window is a real Twitch chat.
+
+| | |
+|---|---|
+| ![Cover](docs/images/01_cover.png) | ![Auto mode](docs/images/02_game_auto_mode.png) |
+| ![Twitch chat beside the game](docs/images/03_twitch_chat_and_game.png) | ![Head picks the level](docs/images/04_head_picks_level.png) |
+| ![Pie splat](docs/images/05_pie_splat.png) | ![Planned and built architecture](docs/images/06_architecture_plan_vs_built.png) |
+| ![Numbers from files](docs/images/07_evidence_numbers.png) | ![Codex status, redacted](docs/images/08_codex_status_redacted.png) |
+
 ## No webcam?
 
 **Start playing** needs a camera: without one it returns to its idle state with a camera message and does not start a round. To try the game with keyboard and mouse (read from `dist/index.html` and `dist/app.mjs`; not run in a browser by the author of this text):
