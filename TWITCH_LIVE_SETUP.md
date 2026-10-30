@@ -13,8 +13,8 @@ You need a Twitch account (with two-factor authentication enabled, which Twitch 
 ## One-time setup
 
 1. Go to the Twitch developer console and register an application.
-   - OAuth Redirect URL: `http://localhost:4173/oauth-callback.html` (exact match; this repository's tested setup uses plain http on `localhost`; Twitch's own pages show `http://localhost` in examples but we did not verify a rule about http)
-   - Category and client type: pick the closest options offered by the console (we did not verify which values the console lists or whether they matter for this flow). The app uses the implicit grant and never a secret.
+   - OAuth Redirect URL: `http://localhost:4173/oauth-callback.html` (exact match; this repository's tested setup uses plain http on `localhost`)
+   - Category and client type: pick the closest options the console offers. The app uses the implicit grant and never a secret.
 2. Copy the application's **Client ID** (not the secret; this app never uses a secret).
 3. Find your numeric **broadcaster channel ID** (the user ID of the channel to read chat from).
 
@@ -39,9 +39,7 @@ You need a Twitch account (with two-factor authentication enabled, which Twitch 
 | Connected but chat is ignored | The token lacks `user:read:chat`, or the broadcaster ID is not the channel you are chatting in. |
 | Subscription revoked | Re-authorize; the game stays offline until you do. |
 
-## Verification checklist for the demo video
+## What was tested live
 
-- [ ] Status shows connected to the live channel.
-- [x] A real viewer message from Twitch chat triggers a ball or pie (not a simulator button). Done with a second Twitch account on a real channel; shown in the demo video.
-- [ ] Overlay visible in OBS above the camera.
-- [ ] Simulated events are never presented as live ones.
+- Tested: a real viewer message from a second Twitch account on a real channel triggers a ball or pie (shown in the demo video; the game footage there is a local recording, not a live broadcast).
+- Not tested live: EventSub chat delivery, real Bits, and the overlay inside OBS itself.
