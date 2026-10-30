@@ -11,7 +11,7 @@ Checked on GitHub on 2026-10-28 (license, stars and last push from the GitHub AP
 
 ## Why this fits the rules
 
-The official rules require every third-party SDK or API to be used within its license. This repository ships no third-party code: the only runtime dependencies are the browser, Node's built-in modules and Twitch's own HTTP/WebSocket endpoints. The design-system vendor files that existed in the working copy were removed from this repository.
+The official rules require every third-party SDK or API to be used within its license. This repository ships no third-party code of its own beyond the vendored, licensed files in `dist/vendor/` and `dist/voice/` (see their NOTICE files): the only runtime dependencies are the browser, Node's built-in modules and Twitch's own HTTP/WebSocket endpoints. The design-system vendor files that existed in the working copy were removed from this repository.
 
 ## How the pieces connect
 
