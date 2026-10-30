@@ -81,4 +81,4 @@ The suite reports 407 tests; on 31 Oct all 407 passed in a run where loopback li
 
 ## Built with Codex
 
-The game core, Twitch adapter, overlay protocol and test suite were developed in OpenAI Codex sessions. After the Codex subscription ended, the final integration (English UI, the login-free chat path, face tracking, the basketball theme and submission packaging) was done with Claude Code, working alongside the Codex-built core. See [SUBMISSION.md](SUBMISSION.md).
+In the main OpenAI Codex thread (about 16 hours and 1,615 tool calls; session ID in [SUBMISSION.md](SUBMISSION.md)) the plan, the shared game core, the Twitch adapter, the overlay protocol and the test suite were developed. After that thread ended, the final integration (English UI, the login-free chat path, face tracking, the basketball theme and submission packaging) was done with Claude Code, working alongside the Codex-built core. See [SUBMISSION.md](SUBMISSION.md).
