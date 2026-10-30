@@ -1,6 +1,6 @@
 import {PoseFreeze} from './pose_freeze.mjs';
 import {ActionGames} from './action_games.mjs';
-import {dropCaught,dropCaughtAt,dropLandX,dropPoints,dropTarget} from './drop_lanes.mjs';
+import {dropCaught,dropCaughtAt,dropLandX,dropPoints,dropTarget,DROP_CATCH_HALF} from './drop_lanes.mjs';
 export const PIE_THREAT_DISTANCE=.30;   // a dodged pie only scores when the streamer was within this x distance of where it landed (otherwise it was never a threat)
 const finite = Number.isFinite;
 export const CROSS_CELLS = Object.freeze([2,4,5,6,8]);
@@ -58,12 +58,13 @@ export class MatrixGame {
   constructor({ clock = () => performance.now(), onEvent = () => {}, options = {} } = {}) {
     this.clock = clock;
     this.onEvent = onEvent;
-    this.config = { maxAge: 250, confidence: .55, warning: 500, crossWarning: 1500, dropFall: 2500, dropScore: 25, bombPenalty: 25, avoidScore: 10, landJitter: 0, chatThrow: true, chatPieGap: 0, pieFall: null, recovery: 1000,
+    this.config = { maxAge: 250, confidence: .55, warning: 500, crossWarning: 1500, dropFall: 2500, dropScore: 25, bombPenalty: 25, avoidScore: 10, landJitter: 0, chatThrow: true, chatPieGap: 0, pieFall: null, catchHalf: null, recovery: 1000,
       actorCooldown: 3000, globalCooldown: 400, maxAttacks: 8, ringTime: 1000,
       ringDamage: 10, damage: 15, dodgeScore: 25, freezeDamage:12, freezeScore:100, freezeCooldown:8000,
       lavaDamage:5,lavaScore:75,actionCooldown:8000,
       dedupeTtl: 600000, dedupeLimit: 2000, maxResults: 200,
       ring: { left: .04, right: .96, top: .04, bottom: .96 }, ...options };
+    if (this.config.catchHalf !== null && (!finite(this.config.catchHalf) || this.config.catchHalf <= 0 || this.config.catchHalf > .5)) throw new RangeError('Invalid catchHalf');
     if (this.config.pieFall !== null && (!finite(this.config.pieFall) || this.config.pieFall <= 0)) throw new RangeError('Invalid pieFall');
     for (const key of ['landJitter','maxAge','warning','crossWarning','dropFall','dropScore','bombPenalty','avoidScore','recovery','actorCooldown','globalCooldown','ringTime','dedupeTtl']) {
       if (!finite(this.config[key]) || this.config[key] < 0) throw new RangeError(`Invalid ${key}`);
@@ -248,7 +249,7 @@ export class MatrixGame {
     // A drop is the reverse of an attack: catching it scores, missing it costs nothing. Only the left/right position counts,
     // so leaving the window vertically does not make a drop unknown; only a missing or low-confidence point does.
     // The catcher follows the streamer's x; the drop is caught when the catcher covers the item's target x (see drop_lanes.mjs).
-    const caught = attack.kind === 'DROP' && point ? (attack.landX !== undefined ? dropCaughtAt(point.x, attack.landX) : dropCaught(point.x, attack.cell - 3)) : null;
+    const caught = attack.kind === 'DROP' && point ? (attack.landX !== undefined ? dropCaughtAt(point.x, attack.landX, this.config.catchHalf ?? DROP_CATCH_HALF) : dropCaught(point.x, attack.cell - 3, this.config.catchHalf ?? DROP_CATCH_HALF)) : null;
     const inCells = attack.kind === 'DROP' ? caught === true : current !== null && (attack.cells ?? [attack.cell]).includes(current);
     const known = attack.kind === 'DROP' ? caught !== null : current !== null;
     const bomb = attack.variant === 'BOMB';
@@ -393,7 +394,7 @@ export class MatrixGame {
   snapshot() {
     return { mode:this.mode, connection:this.connection, wallTime:this.wall, gameTime:this.gameTime,
       hp:this.hp, score:this.score, combo:this.combo, multiplier:comboMultiplier(this.combo), attacks:this.attacks.map(a=>({...a,...(a.cells?{cells:[...a.cells]}:{}),
-        ...(a.kind==='DROP'?{progress:Math.max(0,Math.min(1,a.due>a.start?(this.gameTime-a.start)/(a.due-a.start):1))}:{})})),
+        ...(a.kind==='DROP'?{catchHalf:this.config.catchHalf ?? DROP_CATCH_HALF,progress:Math.max(0,Math.min(1,a.due>a.start?(this.gameTime-a.start)/(a.due-a.start):1))}:{})})),
       lastResult:this.results.length ? {...this.results[this.results.length-1],
         ...(this.results.at(-1).cells?{cells:[...this.results.at(-1).cells]}:{})} : null,
       recoveryRemaining:this.mode==='RECOVERING' ? Math.max(0,this.recoveryUntil-this.wall) : 0,freeze:this.freeze.snapshot(),actionGame:this.actionGame.snapshot() };

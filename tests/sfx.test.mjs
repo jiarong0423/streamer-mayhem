@@ -126,13 +126,13 @@ test('SFX-09 combo streak: the catch pitch follows the pentatonic scale and is c
   assert.ok(COMBO_SCALE.every((f,i,a)=>i===0||f>a[i-1]));
 });
 
-test('SFX-10 the pie warning is an alarm: pulses every 0.2 s through the first 72% of the pie time',async()=>{
+test('SFX-10 the pie warning is a base-alarm siren: 0.5 s sweeps through the first 72% of the pie time',async()=>{
   const {sfx,ctx}=await ready();sfx.play('bombWarn',{leadMs:1700});
   const starts=sources(ctx).map(s=>s.starts[0]);
-  assert.equal(starts.length,6);   // floor(1.7*.72/.2)
-  assert.ok(starts.every((t,i)=>Math.abs(t-i*.2)<1e-9),JSON.stringify(starts));
+  assert.equal(starts.length,2);   // floor(1.7*.72/.5)
+  assert.ok(starts.every((t,i)=>Math.abs(t-i*.5)<1e-9),JSON.stringify(starts));
   const early=await ready();early.sfx.play('bombWarn',{leadMs:100});
-  assert.equal(sources(early.ctx).length,2);   // at least two pulses even for a very short lead
+  assert.equal(sources(early.ctx).length,2);   // at least two sweeps even for a very short lead
   const bad=await ready();bad.sfx.play('bombWarn',{leadMs:NaN});assert.equal(sources(bad.ctx).length,2);
   const long=await ready();long.sfx.play('bombWarn',{leadMs:60000});assert.ok(sources(long.ctx).length<=8);
 });

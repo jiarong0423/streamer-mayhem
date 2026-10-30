@@ -10,12 +10,13 @@ import { dropLandX, DROP_CATCH_HALF } from '../dist/drop_lanes.mjs';
 import { writeFileSync } from 'node:fs';
 
 const arg = (n, d) => { const a = process.argv.find((x) => x.startsWith(`--${n}=`)); return a ? a.split('=')[1] : d; };
+const HALF = Number(arg('half', DROP_CATCH_HALF));   // half width of the catch zone, e.g. --half=.06
 const ROUNDS = Number(arg('rounds', 40)), ROUND_MS = 75000, STEP = 33;
 const THEME = { maxActive: 3, fallMin: 2200, fallMax: 3800, fallFloor: 1500, speedFactor: [1.1, 1.5], gapMin: 550, gapMax: 2400, gapBase: 800, gapMean: 1000, gapFloor: 550, laneStepMs: 450, bombStart: .12, bombEnd: .22, columnWeights: [.06, .88, .06], maxSame: 4 };
 
 function playRound(seed, { speed, react, staggered, crops = 'none' }) {
   const clock = { now: 0 }, results = [];
-  const game = new MatrixGame({ clock: () => clock.now, onEvent: (e) => { if (e.type === 'result') results.push(e); }, options: staggered ? { landJitter: .12, avoidScore: 0 } : {} });
+  const game = new MatrixGame({ clock: () => clock.now, onEvent: (e) => { if (e.type === 'result') results.push(e); }, options: staggered ? { landJitter: .12, avoidScore: 0, catchHalf: HALF } : { catchHalf: HALF } });
   game.setConnection(true); game.start();
   let serial = 0, frame = 0, x = .5;
   const waves = new DropWaves({ seed, ...(staggered ? { ...THEME, landXFor: (c, t) => dropLandX(c, `wave-${serial + 1}-${t}`, .12) } : {}) });
@@ -37,8 +38,8 @@ function playRound(seed, { speed, react, staggered, crops = 'none' }) {
     let target = x;
     const ball = visible.find((p) => !p.bomb);
     if (ball) target = ball.x;
-    const pie = visible.find((p) => p.bomb && Math.abs(target - p.x) < DROP_CATCH_HALF + .02);
-    if (pie) target = pie.x < .5 ? pie.x + DROP_CATCH_HALF + .03 : pie.x - DROP_CATCH_HALF - .03;
+    const pie = visible.find((p) => p.bomb && Math.abs(target - p.x) < HALF + .02);
+    if (pie) target = pie.x < .5 ? pie.x + HALF + .03 : pie.x - HALF - .03;
     const step = speed * STEP / 1000;
     x += Math.max(-step, Math.min(step, target - x));
     frame++; game.addFrame({ frameId: `f${frame}`, captureTime: now, nose: { x, y: .5, visibility: 1 }, leftShoulder: null, rightShoulder: null }); game.tick();

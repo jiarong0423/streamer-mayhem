@@ -86,6 +86,15 @@ function thankSupporter(label){
     else{const a=(voiceClips.thanks??=new Audio('./voice/thanks.wav'));a.currentTime=0;a.volume=.9;a.play().catch(()=>{});}
   }catch{/* the strip still shows the supporter */}
 }
+// Pie warning: a CC0 siren clip (see voice/NOTICE.md). It fades out when the pie is resolved so it never talks over the splat.
+function playPieAlarm(){
+  if(sfx.status()!=='AUDIO READY')return;
+  try{const a=(voiceClips.pie_alarm??=new Audio('./voice/pie_alarm.wav'));clearInterval(a.fadeTimer);a.currentTime=0;a.volume=Math.min(1,.8*Math.max(.2,sfx.volume));a.play().catch(()=>{});}catch{/* the warning flash still shows */}
+}
+function stopPieAlarm(){
+  const a=voiceClips.pie_alarm;if(!a||a.paused)return;
+  clearInterval(a.fadeTimer);a.fadeTimer=setInterval(()=>{a.volume=Math.max(0,a.volume-.12);if(a.volume<=.01){clearInterval(a.fadeTimer);a.pause();}},20);
+}
 function playVoice(points){
   if(sfx.status()!=='AUDIO READY')return;
   const now=performance.now();if(now-voiceAt<1200)return;voiceAt=now;
@@ -349,9 +358,9 @@ function updateSound(snapshot){
     if(attack.kind==='DROP'&&attack.variant!=='BOMB'&&!shotHeard.has(attack.eventId)){shotHeard.add(attack.eventId);sfx.play('shoot');if(shotHeard.size>200)shotHeard.delete(shotHeard.values().next().value);}
     if(attack.variant!=='BOMB')continue;
     ids.add(attack.eventId);
-    if(!warnedBombs.has(attack.eventId)){warnedBombs.add(attack.eventId);sfx.play('bombWarn',{leadMs:(1-(attack.progress??0))*(attack.due-attack.start),skipDedupe:true});}
+    if(!warnedBombs.has(attack.eventId)){warnedBombs.add(attack.eventId);playPieAlarm();}
   }
-  for(const id of warnedBombs)if(!ids.has(id))warnedBombs.delete(id);
+  for(const id of warnedBombs)if(!ids.has(id)){warnedBombs.delete(id);if(!warnedBombs.size)stopPieAlarm();}
 }
 // OBS camera source numbers (flip + crop in pixels) that line the stream up with the grid; text only, refreshed with the overlay publish tick.
 let obsSetupText='';

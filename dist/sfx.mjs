@@ -122,9 +122,12 @@ export function createSfx({ ctxFactory = defaultFactory, storage = null, keepAli
     },
     miss(b) { b.tone({ type: 'sawtooth', f0: 330, f1: 165, dur: 0.28, a: 0.005, peak: SFX_PEAK_DB.miss, filter: { type: 'lowpass', freq: 900 } }); },
     bombWarn(b, o) {
-      // Alarm: alternating high/low pulses through the warning phase (the first 72% of the pie's time), so the sound stops as the pie is thrown.
-      const lead = clamp(o.leadMs, 0, 10000, 0) / 1000, pulses = Math.max(2, Math.min(8, Math.floor(lead * 0.72 / 0.2)));
-      for (let i = 0; i < pulses; i++) b.tone({ type: 'square', f0: i % 2 ? 880 : 1320, at: i * 0.2, dur: 0.14, a: 0.003, peak: SFX_PEAK_DB.bombWarn });
+      // Base-alarm siren: a slow sweep up, then down (0.5 s each), a sawtooth through a low-pass so it sounds like a horn. It runs through the warning phase (the first 72% of the pie's time) and stops as the pie is thrown.
+      const lead = clamp(o.leadMs, 0, 10000, 0) / 1000, sweeps = Math.max(2, Math.min(8, Math.floor(lead * 0.72 / 0.5)));
+      for (let i = 0; i < sweeps; i++) {
+        const up = i % 2 === 0;
+        b.tone({ type: 'sawtooth', f0: up ? 420 : 760, f1: up ? 760 : 420, at: i * 0.5, dur: 0.5, a: 0.04, peak: SFX_PEAK_DB.bombWarn, filter: { type: 'lowpass', freq: 2200 } });
+      }
     },
     bomb(b, o) {
       const long = o.short !== true, dur = long ? 0.45 : 0.22, room = long ? b.room(0.9) : null;

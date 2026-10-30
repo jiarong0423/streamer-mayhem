@@ -77,7 +77,7 @@ export function drawCameraOverlay(ctx,geometry,snapshot,{clear=true,grid=false,n
       const bomb=attack.variant==='BOMB',hue=bomb?'255,90,70':'217,249,101';
       const cx=rect.x+target*rect.width,radius=Math.max(4,Math.min(rect.width/36,rect.height/22)),p=Math.max(0,Math.min(1,attack.progress??0));
       // Three-point shot (theme): the ball or pie is thrown from the right edge, rises in an arc and comes down at its target x on the floor line; p still means "time until it lands".
-      const floor=rect.y+DROP_FLOOR*rect.height,ringHalf=DROP_CATCH_HALF*rect.width;
+      const floor=rect.y+DROP_FLOOR*rect.height,ringHalf=(attack.catchHalf??DROP_CATCH_HALF)*rect.width;
       const three=dropPoints(target)===3,arc=shotArc(attack.eventId??attack.id??attack.cell,three?3:2);   // see ARC_RANGES
       let sx,sy;
       if(three){   // left and right lanes: thrown from the lane's own side in a gentle arc
@@ -96,10 +96,10 @@ export function drawCameraOverlay(ctx,geometry,snapshot,{clear=true,grid=false,n
         }
         drawLanding(ctx,cx,floor,radius,ringHalf,p,now,hue);
         if(p>=PIE_AT){
-          // The pie is thrown fast from the side at the target column and arrives at face height (the player's face when they stand there); it grows as it comes at the camera.
+          // The pie is thrown straight at the camera: it starts small at the target column at face height and grows fast (ease-in) until it fills the view at impact (p=1).
           const q=Math.min(1,(p-PIE_AT)/(1-PIE_AT)),faceY=face&&Number.isFinite(face.y)?Math.max(rect.y,Math.min(face.y,floor)):rect.y+rect.height*.6;
-          const fromX=target<.5?rect.x+rect.width+radius*3:rect.x-radius*3,px=fromX+(cx-fromX)*q*q,py=faceY-rect.height*.28*(1-q)*(1-q),pr=radius*(1.2+1.5*q);
-          ctx.save();ctx.translate(px,py);ctx.rotate((1-q)*(target<.5?-4:4));drawBomb(ctx,0,0,pr,now,p);ctx.restore();
+          const pr=radius*(.5+4.2*q*q*q),wobble=Math.sin(q*9)*radius*.25*(1-q);
+          ctx.save();ctx.translate(cx+wobble,faceY);ctx.rotate(q*(target<.5?-2.2:2.2));ctx.globalAlpha=.55+.45*q;drawBomb(ctx,0,0,pr,now,p);ctx.restore();
         }
         continue;
       }

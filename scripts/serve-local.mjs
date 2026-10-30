@@ -14,7 +14,7 @@ const routes=new Map([
 ]);
 for(const [file,type] of [['vision_bundle.mjs','text/javascript; charset=utf-8'],['wasm/vision_wasm_internal.js','text/javascript; charset=utf-8'],['wasm/vision_wasm_internal.wasm','application/wasm'],['pose_landmarker_lite.task','application/octet-stream'],['blaze_face_short_range.tflite','application/octet-stream'],['face_landmarker.task','application/octet-stream']])routes.set(`/vendor/mediapipe/${file}`,[`vendor/mediapipe/${file}`,type]);
 for(const file of ['star_01.png','star_02.png','star_06.png'])routes.set(`/vendor/kenney-particles/${file}`,[`vendor/kenney-particles/${file}`,'image/png']);
-for(const file of ['good_shot.wav','nice_shot.wav','three_points.wav','thanks.wav'])routes.set(`/voice/${file}`,[`voice/${file}`,'audio/wav']);
+for(const file of ['good_shot.wav','nice_shot.wav','three_points.wav','thanks.wav','pie_alarm.wav'])routes.set(`/voice/${file}`,[`voice/${file}`,'audio/wav']);
 const smoke=process.argv.includes('--smoke');
 const extra=process.argv.slice(2).filter(arg=>arg!=='--smoke');
 if(extra.length){process.stderr.write('Usage: node scripts/serve-local.mjs [--smoke]\n');process.exit(2);}

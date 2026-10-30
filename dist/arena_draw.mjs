@@ -9,7 +9,7 @@ export const FONT=FONT_STACK;
 // Where the catcher stands relative to a falling item: inside its catch zone, and whether the item is a pie (danger cue colours).
 export function hoopState(rect,position,drop){
   const relX=(position.x-rect.x)/rect.width;
-  return {inLane:Boolean(drop)&&(Number.isFinite(drop.landX)?dropCaughtAt(relX,drop.landX):dropCaught(relX,drop.cell-3))===true,danger:Boolean(drop)&&drop.variant==='BOMB'};
+  return {inLane:Boolean(drop)&&(Number.isFinite(drop.landX)?dropCaughtAt(relX,drop.landX,drop.catchHalf??DROP_CATCH_HALF):dropCaught(relX,drop.cell-3,drop.catchHalf??DROP_CATCH_HALF))===true,danger:Boolean(drop)&&drop.variant==='BOMB'};
 }
 // While an item is falling, a catcher the width of the catch zone follows the streamer along the bottom; it turns gold when it covers the item.
 // The caller has already clipped to `rect`. Shared by the game page and the OBS overlay (dist/overlay.mjs).
@@ -17,7 +17,7 @@ export function drawHoop(ctx,rect,position,drop,{inLane,danger,ringRadius}={}){
   if(inLane===undefined||danger===undefined)({inLane,danger}=hoopState(rect,position,drop));
   if(!Number.isFinite(ringRadius))ringRadius=Math.max(10,Math.min(26,rect.width/40));
   {
-      const half=DROP_CATCH_HALF*rect.width,cy=rect.y+DROP_FLOOR*rect.height+Math.max(6,rect.height/60),h=Math.max(8,rect.height/36),cx=Math.max(rect.x+half,Math.min(rect.x+rect.width-half,position.x));
+      const half=(drop?.catchHalf??DROP_CATCH_HALF)*rect.width,cy=rect.y+DROP_FLOOR*rect.height+Math.max(6,rect.height/60),h=Math.max(8,rect.height/36),cx=Math.max(rect.x+half,Math.min(rect.x+rect.width-half,position.x));
       ctx.save();ctx.globalAlpha=.9;ctx.lineWidth=Math.max(1.5,h/6);
       ctx.strokeStyle=inLane?(danger?'rgba(255,107,90,.7)':'rgba(255,210,63,.55)'):'rgba(231,241,220,.28)';ctx.beginPath();ctx.moveTo(position.x,position.y+ringRadius);ctx.lineTo(cx,cy-h);ctx.stroke();
       if(inLane){ctx.shadowColor=danger?'rgba(255,107,90,.9)':'rgba(255,210,63,.9)';ctx.shadowBlur=h*1.5;}

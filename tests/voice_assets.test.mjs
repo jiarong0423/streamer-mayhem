@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync,existsSync,statSync} from 'node:fs';
-const clips=['good_shot','nice_shot','three_points','thanks'];
+const clips=['good_shot','nice_shot','three_points','thanks','pie_alarm'];
 test('VOICE-01 (theme) the announcer clips exist, are small mono 24 kHz PCM WAV files and are referenced by the app and the local server',()=>{
   const app=readFileSync(new URL('../dist/app.mjs',import.meta.url),'utf8'),server=readFileSync(new URL('../scripts/serve-local.mjs',import.meta.url),'utf8');
   for(const name of clips){

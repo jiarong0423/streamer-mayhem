@@ -237,7 +237,7 @@ export function drawFeedback(ctx,rect,effect,now,{catcherX=.5,faceY}={}){
   }
   if(effect.outcome==='BOMB'&&age<SPLAT_MS){
     // Cream splat on the face: a white blob with satellite blobs and drips that run down and fade out.
-    const grow=easeOutExpo(Math.min(1,age/140)),fade=1-clamp((age-SPLAT_MS+300)/300,0,1),R=unit*3.4*grow;
+    const grow=easeOutExpo(Math.min(1,age/110)),fade=1-clamp((age-SPLAT_MS+300)/300,0,1),R=unit*6.2*grow;   // the pie hits the lens: a big splat over the face
     ctx.save();ctx.globalAlpha=fade;ctx.fillStyle='#fff7e6';ctx.strokeStyle='rgba(214,170,110,.9)';ctx.lineWidth=Math.max(1.5,unit*.18);
     const blob=(x,y,r)=>{ctx.beginPath();ctx.arc(x,y,r,0,2*Math.PI);ctx.fill();ctx.stroke();};
     blob(anchor.x,anchor.y,R);
