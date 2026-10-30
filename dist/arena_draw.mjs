@@ -44,9 +44,9 @@ export function drawArena(ctx,snapshot,player,{now=0,lastEffect=null,banner=null
   ctx.fillStyle='rgba(15,22,15,.45)';ctx.fillRect(rect.x,rect.y,rect.width,rect.height);
   if(backdrop)backdrop(ctx,geometry);
   const playing=snapshot.mode==='PLAYING';
-  const overlay=drawCameraOverlay(ctx,geometry,playing||snapshot.mode==='TRACKING_LOST'||snapshot.mode==='RECOVERING'?snapshot:{...snapshot,attacks:[]},{clear:false,now});
   const mapped=playing&&tracking&&player?projectCameraPoint({...player,visibility:1},geometry):null;
   const position=visiblePointToCanvas(mapped,geometry);
+  const overlay=drawCameraOverlay(ctx,geometry,playing||snapshot.mode==='TRACKING_LOST'||snapshot.mode==='RECOVERING'?snapshot:{...snapshot,attacks:[]},{clear:false,now,face:position});
   if(position&&marker){
     ctx.save();ctx.beginPath();ctx.rect(rect.x,rect.y,rect.width,rect.height);ctx.clip();// While an item is falling, a catcher the width of the catch zone follows the streamer along the bottom; it turns gold when it covers the item.
     const drop=snapshot.attacks?.find(a=>a.kind==='DROP'),{inLane,danger}=hoopState(rect,position,drop);
@@ -70,7 +70,7 @@ export function drawArena(ctx,snapshot,player,{now=0,lastEffect=null,banner=null
     ctx.strokeStyle='#d9f965';ctx.lineWidth=2;ctx.beginPath();ctx.arc(0,0,7,0,2*Math.PI);ctx.stroke();ctx.restore();
   }
   const catcherX=position?clampRel((position.x-rect.x)/rect.width):.5;
-  if(lastEffect&&snapshot.mode==='PLAYING')drawFeedback(ctx,rect,lastEffect,now,{catcherX});
+  if(lastEffect&&snapshot.mode==='PLAYING')drawFeedback(ctx,rect,lastEffect,now,{catcherX,faceY:position?(position.y-rect.y)/rect.height:undefined});
   if(lastEffect&&lastEffect.outcome==='BOMB'&&snapshot.mode==='PLAYING'&&now-lastEffect.at<350)drawVignette(ctx,rect,.3*(1-(now-lastEffect.at)/350),{inner:.45});
   ctx.restore();
   // HUD and banner stay still while the picture shakes. combo / multiplier / roundLeftMs are optional extras on the snapshot.

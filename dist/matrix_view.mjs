@@ -60,7 +60,7 @@ export function drawMatrix(ctx, snapshot, { viewWidth, viewHeight, sourceWidth, 
 
 // Transparent compositing layer: only the calibrated visible camera rectangle is touched.
 // The nine-cell grid is not drawn unless `grid` is true (calibration view); cells are still computed for judging and attack highlights.
-export function drawCameraOverlay(ctx,geometry,snapshot,{clear=true,grid=false,now=0}={}) {
+export function drawCameraOverlay(ctx,geometry,snapshot,{clear=true,grid=false,now=0,face=null}={}) {
   if(clear)ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);
   if(!geometry)return {rect:null,cells:[]};
   const rect=geometry.visible,cells=gridRects(rect);
@@ -95,7 +95,12 @@ export function drawCameraOverlay(ctx,geometry,snapshot,{clear=true,grid=false,n
           ctx.fillStyle=`rgba(255,236,230,${blink+.4})`;ctx.font=`900 ${Math.max(14,radius*2.4)}px sans-serif`;ctx.textAlign='center';ctx.fillText('!',cx,rect.y+radius*3);ctx.textAlign='left';
         }
         drawLanding(ctx,cx,floor,radius,ringHalf,p,now,hue);
-        if(p>=PIE_AT){const pop=Math.min(1,(p-PIE_AT)/.06);ctx.save();ctx.translate(cx,floor-radius*1.4);ctx.scale(.6+.4*pop,.6+.4*pop);drawBomb(ctx,0,0,radius*1.3,now,p);ctx.restore();}
+        if(p>=PIE_AT){
+          // The pie is thrown fast from the side at the target column and arrives at face height (the player's face when they stand there); it grows as it comes at the camera.
+          const q=Math.min(1,(p-PIE_AT)/(1-PIE_AT)),faceY=face&&Number.isFinite(face.y)?Math.max(rect.y,Math.min(face.y,floor)):rect.y+rect.height*.6;
+          const fromX=target<.5?rect.x+rect.width+radius*3:rect.x-radius*3,px=fromX+(cx-fromX)*q*q,py=faceY-rect.height*.28*(1-q)*(1-q),pr=radius*(1.2+1.5*q);
+          ctx.save();ctx.translate(px,py);ctx.rotate((1-q)*(target<.5?-4:4));drawBomb(ctx,0,0,pr,now,p);ctx.restore();
+        }
         continue;
       }
       drawLanding(ctx,cx,floor,radius,ringHalf,p,now,hue);

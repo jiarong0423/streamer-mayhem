@@ -192,7 +192,7 @@ export function drawBomb(ctx,cx,y,r,now=0,p=0){
 }
 
 // ---------- feedback (CATCH / BOMB / AVOID / MISS / HIT) ----------
-export const FEEDBACK_MS=1000,FEEDBACK_FADE_MS=300,POP_MS=160,BOMB_SHAKE_MS=300;
+export const SPLAT_MS=1000,FEEDBACK_MS=1000,FEEDBACK_FADE_MS=300,POP_MS=160,BOMB_SHAKE_MS=300;
 const MINUS='−';
 const STYLE={
   CATCH:{color:COLORS.gold,scored:true},BOMB:{color:COLORS.dangerText,scored:true},AVOID:{color:COLORS.avoid,scored:true},
@@ -205,12 +205,13 @@ export function feedbackLabel(effect){
   return effect.outcome;
 }
 // Where the feedback shows: the event point (effect.x/y, 0..1 of the window) or a per-outcome default.
-export function feedbackAnchor(effect,rect,{catcherX=.5}={}){
+export function feedbackAnchor(effect,rect,{catcherX=.5,faceY}={}){
   const r=Math.max(10,Math.min(26,rect.width/40)),has=fin(effect.x)&&fin(effect.y);
   const point=(rx,ry)=>({x:rect.x+clamp(has?effect.x:rx,0,1)*rect.width,y:rect.y+clamp(has?effect.y:ry,0,1)*rect.height});
   switch(effect.outcome){
     case 'CATCH':{const p=point(catcherX,DROP_FLOOR);return {x:p.x,y:has?p.y:p.y-r*2};}
-    case 'BOMB':case 'MISS':return point(catcherX,DROP_FLOOR);
+    case 'BOMB':return point(catcherX,fin(faceY)?faceY:DROP_FLOOR);   // a pie ends on the face
+    case 'MISS':return point(catcherX,DROP_FLOOR);
     case 'AVOID':return point(.5,.35);
     default:return {x:rect.x+rect.width/2,y:rect.y+Math.min(72,rect.height/4)};
   }
@@ -221,10 +222,10 @@ export function shakeOffset(age,width){
   return {x:amp*Math.sin(age*.11*Math.PI),y:amp*Math.cos(age*.17*Math.PI),amp};
 }
 // Draws one feedback; returns a descriptor of what was drawn (null when expired) so tests and callers can read position/colour/scale.
-export function drawFeedback(ctx,rect,effect,now,{catcherX=.5}={}){
+export function drawFeedback(ctx,rect,effect,now,{catcherX=.5,faceY}={}){
   if(!effect||!fin(effect.at)||!fin(now))return null;
   const age=Math.max(0,now-effect.at);if(age>=FEEDBACK_MS)return null;
-  const st=STYLE[effect.outcome]??STYLE.HIT,anchor=feedbackAnchor(effect,rect,{catcherX}),label=feedbackLabel(effect);
+  const st=STYLE[effect.outcome]??STYLE.HIT,anchor=feedbackAnchor(effect,rect,{catcherX,faceY}),label=feedbackLabel(effect);
   const scale=age>=POP_MS?1:.6+.4*easeOutBack(age/POP_MS);
   const fadeT=clamp((age-(FEEDBACK_MS-FEEDBACK_FADE_MS))/FEEDBACK_FADE_MS,0,1),alpha=(1-fadeT)*(st.alpha??1),rise=-rect.height*.04*easeOutQuad(fadeT);
   const size=clamp(rect.height/8,MIN_TEXT_PX,48)*(st.scale??1);
@@ -233,6 +234,16 @@ export function drawFeedback(ctx,rect,effect,now,{catcherX=.5}={}){
   if(effect.outcome==='BOMB'&&age<350){
     const p=easeOutExpo(age/350),r=rect.width/6*p;
     if(r>0){const g=ctx.createRadialGradient(anchor.x,anchor.y,0,anchor.x,anchor.y,r);g.addColorStop(0,'rgba(255,139,42,.9)');g.addColorStop(.6,'rgba(255,139,42,.45)');g.addColorStop(1,'rgba(255,139,42,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(anchor.x,anchor.y,r,0,2*Math.PI);ctx.fill();}
+  }
+  if(effect.outcome==='BOMB'&&age<SPLAT_MS){
+    // Cream splat on the face: a white blob with satellite blobs and drips that run down and fade out.
+    const grow=easeOutExpo(Math.min(1,age/140)),fade=1-clamp((age-SPLAT_MS+300)/300,0,1),R=unit*3.4*grow;
+    ctx.save();ctx.globalAlpha=fade;ctx.fillStyle='#fff7e6';ctx.strokeStyle='rgba(214,170,110,.9)';ctx.lineWidth=Math.max(1.5,unit*.18);
+    const blob=(x,y,r)=>{ctx.beginPath();ctx.arc(x,y,r,0,2*Math.PI);ctx.fill();ctx.stroke();};
+    blob(anchor.x,anchor.y,R);
+    for(let i=0;i<8;i++){const ang=i*Math.PI/4+.3,d=R*(.85+.25*((i*5)%3)/2);blob(anchor.x+Math.cos(ang)*d,anchor.y+Math.sin(ang)*d,R*(.28+.12*(i%3)));}
+    for(const dx of [-.55,0,.5]){const len=unit*(1.2+4*easeOutQuad(Math.min(1,age/SPLAT_MS)))*(dx===0?1.3:1);ctx.fillRect(anchor.x+dx*R-unit*.28,anchor.y+R*.4,unit*.56,len);}
+    ctx.restore();
   }
   if(effect.outcome==='MISS'&&age<400){
     const t=easeOutQuad(age/400);ctx.strokeStyle=rgba(COLORS.gray,.5*(1-t));ctx.lineWidth=Math.max(2,unit*.4);ctx.beginPath();ctx.ellipse(anchor.x,anchor.y,unit*(2+4*t),unit*(1+1.4*t),0,0,2*Math.PI);ctx.stroke();

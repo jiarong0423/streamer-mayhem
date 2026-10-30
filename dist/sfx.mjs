@@ -9,7 +9,7 @@ export const SFX_KEY = 'sm.sfx';
 // Major pentatonic steps used by the combo streak; the catch sound uses step n for a combo of n (capped at 8).
 export const COMBO_SCALE = Object.freeze([523, 587, 659, 784, 880, 1047, 1175, 1319]);
 // Peak level of the loudest layer of each sound in dBFS before the master gain (the master is about -6 dB on top of this).
-export const SFX_PEAK_DB = Object.freeze({ catch: -14, miss: -16, bombWarn: -18, bomb: -10, avoid: -20, hit: -10, dodge: -20, roundStart: -16, roundEnd: -16, tick: -20 });
+export const SFX_PEAK_DB = Object.freeze({ catch: -14, miss: -16, bombWarn: -14, bomb: -10, avoid: -20, hit: -10, dodge: -20, roundStart: -16, roundEnd: -16, tick: -20 });
 const SEMITONE_7 = Math.pow(2, 7 / 12);
 
 function defaultFactory() {
@@ -122,8 +122,9 @@ export function createSfx({ ctxFactory = defaultFactory, storage = null, keepAli
     },
     miss(b) { b.tone({ type: 'sawtooth', f0: 330, f1: 165, dur: 0.28, a: 0.005, peak: SFX_PEAK_DB.miss, filter: { type: 'lowpass', freq: 900 } }); },
     bombWarn(b, o) {
-      const lead = clamp(o.leadMs, 0, 10000, 0) / 1000, base = Math.max(0, lead - 0.5);   // the three beeps close in on the impact
-      for (const off of [0, 0.25, 0.42]) b.tone({ type: 'square', f0: 1200, at: base + off, dur: 0.06, a: 0.002, peak: SFX_PEAK_DB.bombWarn });
+      // Alarm: alternating high/low pulses through the warning phase (the first 72% of the pie's time), so the sound stops as the pie is thrown.
+      const lead = clamp(o.leadMs, 0, 10000, 0) / 1000, pulses = Math.max(2, Math.min(8, Math.floor(lead * 0.72 / 0.2)));
+      for (let i = 0; i < pulses; i++) b.tone({ type: 'square', f0: i % 2 ? 880 : 1320, at: i * 0.2, dur: 0.14, a: 0.003, peak: SFX_PEAK_DB.bombWarn });
     },
     bomb(b, o) {
       const long = o.short !== true, dur = long ? 0.45 : 0.22, room = long ? b.room(0.9) : null;

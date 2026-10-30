@@ -26,7 +26,7 @@ test('PATROL-02 the default game still accepts !throw (the 3x3 core keeps its te
 
 test('PATROL-03 the page builds its game with avoidScore:0 and chatThrow:false, and the simulator also scores a dodge as 0',()=>{
   const app=read('dist/app.mjs');
-  assert.match(app,/options:\{landJitter:\.12,avoidScore:0,chatThrow:false,chatPieGap:4500\}/);
+  assert.match(app,/options:\{landJitter:\.12,avoidScore:0,chatThrow:false,chatPieGap:4500,pieFall:1700\}/);
   assert.match(read('scripts/sim-play.mjs'),/landJitter: \.12, avoidScore: 0/);
 });
 
@@ -51,4 +51,16 @@ test('PATROL-05 chatPieGap: several accounts taking turns cannot keep a pie on s
   assert.ok(open.balls<=1,`without the gap the pie spam blocks the balls (the bug): ${open.balls}`);assert.ok(fixed.balls>=3,`balls get through with the gap: ${fixed.balls}`);assert.ok(fixed.pies>=3);
   const slow=new MatrixGame({options:{chatPieGap:4500}});slow.setConnection(true);slow.start();
   assert.equal(slow.receiveChat({notificationId:'x',messageId:'x',actorId:'a',receivedAt:0,text:'!pie 1'}).reason!=='PIE_COOLDOWN',true);
+});
+
+test('PIE-01 pieFall shortens only the pie (the ball keeps dropFall) and must be positive',()=>{
+  const fall=(text)=>{
+    const game=new MatrixGame({clock:()=>0,options:{pieFall:1700}});game.setConnection(true);game.start();
+    game.addFrame({frameId:'f1',captureTime:0,nose:{x:.5,y:.5,visibility:1},leftShoulder:null,rightShoulder:null});game.tick();
+    assert.equal(game.receiveChat({notificationId:'n1',messageId:'m1',actorId:'a',receivedAt:0,text}).accepted,true);
+    const attack=game.snapshot().attacks[0];return attack.due-attack.start;
+  };
+  assert.equal(fall('!pie 2'),1700);
+  assert.equal(fall('!drop 2'),2500);
+  assert.throws(()=>new MatrixGame({options:{pieFall:0}}),RangeError);
 });

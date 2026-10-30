@@ -58,12 +58,13 @@ export class MatrixGame {
   constructor({ clock = () => performance.now(), onEvent = () => {}, options = {} } = {}) {
     this.clock = clock;
     this.onEvent = onEvent;
-    this.config = { maxAge: 250, confidence: .55, warning: 500, crossWarning: 1500, dropFall: 2500, dropScore: 25, bombPenalty: 25, avoidScore: 10, landJitter: 0, chatThrow: true, chatPieGap: 0, recovery: 1000,
+    this.config = { maxAge: 250, confidence: .55, warning: 500, crossWarning: 1500, dropFall: 2500, dropScore: 25, bombPenalty: 25, avoidScore: 10, landJitter: 0, chatThrow: true, chatPieGap: 0, pieFall: null, recovery: 1000,
       actorCooldown: 3000, globalCooldown: 400, maxAttacks: 8, ringTime: 1000,
       ringDamage: 10, damage: 15, dodgeScore: 25, freezeDamage:12, freezeScore:100, freezeCooldown:8000,
       lavaDamage:5,lavaScore:75,actionCooldown:8000,
       dedupeTtl: 600000, dedupeLimit: 2000, maxResults: 200,
       ring: { left: .04, right: .96, top: .04, bottom: .96 }, ...options };
+    if (this.config.pieFall !== null && (!finite(this.config.pieFall) || this.config.pieFall <= 0)) throw new RangeError('Invalid pieFall');
     for (const key of ['landJitter','maxAge','warning','crossWarning','dropFall','dropScore','bombPenalty','avoidScore','recovery','actorCooldown','globalCooldown','ringTime','dedupeTtl']) {
       if (!finite(this.config[key]) || this.config[key] < 0) throw new RangeError(`Invalid ${key}`);
     }
@@ -163,7 +164,7 @@ export class MatrixGame {
     if (bomb !== null) {
       // chatPieGap: two accounts taking turns (actor cooldown 3 s, a pie falls 2.5 s) could keep a pie on screen forever and the ball/pie stagger rule would then refuse every ball
       if (this.config.chatPieGap > 0 && this.gameTime - this.lastChatPie < this.config.chatPieGap) return {accepted:false, reason:'PIE_COOLDOWN'};
-      const delivery = this.#receiveAttack(event, {cell:bomb + 3, kind:'DROP', variant:'BOMB', cells:dropCells(bomb), warning:this.config.dropFall});
+      const delivery = this.#receiveAttack(event, {cell:bomb + 3, kind:'DROP', variant:'BOMB', cells:dropCells(bomb), warning:this.config.pieFall ?? this.config.dropFall});
       if (delivery?.accepted) this.lastChatPie = this.gameTime;
       return delivery;
     }

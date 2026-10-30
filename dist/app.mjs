@@ -117,7 +117,7 @@ const game=new MatrixGame({onEvent:event=>{
     feed(titles[event.outcome]??'Undetermined',`${challengeNames[event.kind]??`Target cell ${event.cell}`} · ${event.outcome}`);
   } else if(event.type==='lavaBurn')feed('Lava burn',`HP ${event.hpDelta} · stand to avoid the lava`);
   else if(event.type==='ringOut')feed('Character left the arena','Out of bounds');
-},options:{landJitter:.12,avoidScore:0,chatThrow:false,chatPieGap:4500}});   // theme: dodging a pie scores nothing (a dodge is just not being hit)
+},options:{landJitter:.12,avoidScore:0,chatThrow:false,chatPieGap:4500,pieFall:1700}});   // theme: dodging a pie scores nothing (a dodge is just not being hit)
 const stabilizer=new PointStabilizer();
 const frameSource=new SyntheticFrameSource({game,maxAge:game.config.maxAge,project:frame=>{
   const out=cameraGeometry?projectCameraFrame(frame,cameraGeometry):{...frame,nose:null,leftShoulder:null,rightShoulder:null};

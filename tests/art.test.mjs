@@ -118,7 +118,7 @@ test('ART-11 BOMB: expanding orange blast and a 300ms decaying shake of at most 
   const f=fake();drawFeedback(f.ctx,rect,{outcome:'BOMB',at:0,scoreDelta:-25},175);
   const blast=f.of('arc').find(c=>c.a[2]>0&&c.a[2]<=rect.width/6);assert.ok(blast);
   const f2=fake();drawFeedback(f2.ctx,rect,{outcome:'BOMB',at:0,scoreDelta:-25},349);assert.ok(f2.of('arc').find(c=>c.a[2]>rect.width/6*.99));
-  const f3=fake();drawFeedback(f3.ctx,rect,{outcome:'BOMB',at:0,scoreDelta:-25},360);assert.equal(f3.of('arc').length,0);
+  const f3=fake();drawFeedback(f3.ctx,rect,{outcome:'BOMB',at:0,scoreDelta:-25},1100);assert.equal(f3.of('arc').length,0);   // the cream splat (blobs are arcs) lasts 1000 ms
   let peak=0;for(let age=0;age<300;age+=5){const s=shakeOffset(age,rect.width);peak=Math.max(peak,Math.abs(s.x),Math.abs(s.y));assert.ok(Math.abs(s.x)<=rect.width/160+1e-9&&Math.abs(s.y)<=rect.width/160+1e-9);}
   assert.ok(peak>rect.width/160*.3);assert.deepEqual(shakeOffset(300,960),{x:0,y:0,amp:0});assert.equal(shakeOffset(-1,960).amp,0);assert.ok(shakeOffset(250,960).amp<shakeOffset(50,960).amp);
 });

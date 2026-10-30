@@ -37,7 +37,8 @@ export class IrcAnonymousChat {
     this.channel=normalizeChannel(channel);this.endpoint=endpoint;this.WebSocketClass=WebSocketClass;
     this.adapter=new EventSubAdapter({game,clock,broadcasterId:'pending-room-id',onDelivery});
     this.onStatus=onStatus;this.retryBaseMs=retryBaseMs;this.retryMaxMs=retryMaxMs;this.maxRetries=maxRetries;this.joinTimeoutMs=joinTimeoutMs;this.idleMs=idleMs;this.watchdog=null;
-    this.random=random;this.setTimer=setTimer;this.clearTimer=clearTimer;
+    // Wrapped so the browser's setTimeout/clearTimeout are never called with this=IrcAnonymousChat ("Illegal invocation").
+    this.random=random;this.setTimer=(fn,ms)=>setTimer(fn,ms);this.clearTimer=handle=>clearTimer(handle);
     this.status='STOPPED';this.socket=null;this.timer=null;this.attempt=0;this.roomId=null;this.buffer='';
   }
   #set(status,detail){this.status=status;this.onStatus(status,detail);}

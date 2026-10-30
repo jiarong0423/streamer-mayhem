@@ -99,3 +99,12 @@ test('stop closes the socket and leaves the game offline',()=>{
   const socket=f.socket();f.chat.stop();assert.equal(socket.closed,true);assert.equal(f.chat.status,'STOPPED');assert.equal(f.game.connection,'OFFLINE');
   socket.push(privmsg('late'));assert.equal(f.game.attacks.length,0);
 });
+
+test('timers are called without the chat object as this (browser setTimeout throws Illegal invocation otherwise)',()=>{
+  const seen=[];
+  const strict=function(fn,ms){seen.push(this);return {fn,ms};};
+  const {chat}=fixture({setTimer:strict,clearTimer:function(){seen.push(this);}});
+  chat.start();chat.stop();
+  assert.ok(seen.length>=2);
+  assert.ok(seen.every(t=>t===undefined),'timer functions must not receive the chat instance as this');
+});
