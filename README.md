@@ -82,4 +82,4 @@ The suite reports 407 tests; on 31 Oct all 407 passed in a run where loopback li
 
 ## Built with Codex
 
-In the main OpenAI Codex thread (about 16 hours and 1,615 tool calls; session ID in [SUBMISSION.md](SUBMISSION.md)) the plan, the shared game core, the Twitch adapter, the overlay protocol and the test suite were developed. After that thread ended, the final integration (English UI, the login-free chat path, face tracking, the basketball theme and submission packaging) was done with Claude Code, working alongside the Codex-built core. See [SUBMISSION.md](SUBMISSION.md).
+In the main OpenAI Codex thread (about 16 hours and 1,615 tool calls; session ID in [SUBMISSION.md](SUBMISSION.md)) the plan and the first version of the game were built: the shared rules core, the Twitch provider and EventSub adapter, the overlay protocol and a first suite of about 170 tests. That work is this repository's first commit. The basketball game on top of it (login-free chat, camera tracking, drop waves, sound, difficulty and head menu) was built afterwards with Claude Code, 28–31 Oct. See [SUBMISSION.md](SUBMISSION.md).
