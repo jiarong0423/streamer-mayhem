@@ -24,7 +24,7 @@ A Twitch interactive game for a seated streamer, themed as basketball. Chat shoo
 
 ## Screenshots
 
-Frames from the demo video (https://youtu.be/x7fBKSyv6oE). The game footage is a local recording, not a live broadcast; the chat window is a real Twitch chat.
+Frames from the demo video (https://youtu.be/x7fBKSyv6oE). The game footage is a local recording, not a live broadcast; the chat window is real Twitch chat typed from a second account, shown next to a separate recording of the game (the two are not frame-synchronised).
 
 | | |
 |---|---|
@@ -44,7 +44,7 @@ Frames from the demo video (https://youtu.be/x7fBKSyv6oE). The game footage is a
 
 ## Requirements
 
-Node.js with the built-in `node:test` runner (tested with v26.12.1). No packages to install. A modern browser. OBS is optional.
+Node.js with the built-in `node:test` runner (tested with v26.12.1; the test command uses `--test-force-exit`, so use a recent Node). No packages to install. A modern browser. OBS is optional.
 
 ## Run
 
@@ -62,13 +62,13 @@ To connect to real Twitch, follow [TWITCH_LIVE_SETUP.md](TWITCH_LIVE_SETUP.md). 
 node --test --test-force-exit tests/*.test.mjs
 ```
 
-The suite reports 407 tests; on 31 Oct all 407 passed in a run where loopback listening was permitted (inside a sandbox the 2 `serve_local` tests fail with `EPERM` because they cannot bind `127.0.0.1`). Tests use fake clocks, synthetic event IDs and generated landmarks.
+The suite reports 407 tests; on 31 Oct all 407 passed in a run where loopback listening was permitted (inside a sandbox the 2 `serve_local` tests fail with `EPERM` because they cannot bind `127.0.0.1`). Tests use fake clocks, synthetic event IDs and generated landmarks. One timing test (`obs_resource_guard`) can fail when the machine is busy.
 
 ## Limits
 
 - Camera tracking: press **Start playing** (or **Turn on camera tracking** under More options). The page runs Google's MediaPipe (Apache-2.0, bundled under `dist/vendor/mediapipe/`, see its NOTICE.md and LICENSE-Apache-2.0.txt) on your camera, locally. The default Face Landmarker follows your head. The game frames you automatically (about six face widths across, face a little above the middle) and mirrors the picture. Tracking loss never scores or hurts (the result is UNKNOWN). Body mode (pose) is for the older Freeze and Lava modes. Models load under the page's security policy, and mapping and framing are unit tested. Keep the camera fixed and sit alone in view. The model library tries to send a usage-log request to Google; the page's Content-Security-Policy blocks it, so nothing leaves the machine. Without the camera, input is synthetic (keyboard or mouse).
 - Seated play: **Auto-frame** (a checkbox, on by default) crops the picture around your face (about six face widths wide) and re-frames only if you move much closer or farther. The camera image is **mirrored** by default, so leaning left moves left. Face tracking uses MediaPipe Face Landmarker, which keeps tracking a tilted head; the plain face detector is the fallback. Open the page with `?debug=1` for a readout (face score, frames per second, position, judged position).
-- Camera measurement: one Android phone (rear camera, glasses), on an earlier straight-drop version of the game, not the current basketball build. Face tracking ran at about 22 frames per second, three of three drops were caught, and catch judging matched the head position (for example head at 41%/64%/50% for targets 35%/65%/50%). This is a single-person, single-device check, not a study; accuracy depends on lighting and camera placement. The face-position survey of 180 live Just Chatting thumbnails behind the framing numbers is in the project notes (single frame per channel, rough order of magnitude).
+- Camera measurement: one Android phone (rear camera, glasses), on an earlier straight-drop version of the game, not the current basketball build. Face tracking ran at about 22 frames per second, three of three drops were caught, and catch judging matched the head position (for example head at 41%/64%/50% for targets 35%/65%/50%). This is a single-person, single-device check, not a study; accuracy depends on lighting and camera placement.
 - Twitch chat: tested against the local protocol simulator and the Twitch CLI mock. The login-free IRC path connected to a real channel and received its room id. Real chat commands typed from a second Twitch account on a real channel triggered balls and pies in the demo video (the game footage there is a local recording, not a live broadcast). Unit tests with a fake socket also cover its message parsing. The EventSub path reached the connection stage only. Chat delivery through EventSub has not been tested live and needs the streamer's own Twitch app.
 - Bits and supporter features (star balls, star on the marquee) were tested with simulated cheers only. Whether a real Bits message arrives through the IRC `bits` tag is untested.
 - OBS: the overlay was tested in a synthetic Browser Source profile only, not in OBS itself, and shows a subset of the game page.
