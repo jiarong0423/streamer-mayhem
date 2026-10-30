@@ -26,7 +26,7 @@ Official wording: the thread where most of the project was built (type `/status`
 https://github.com/jiarong0423/streamer-mayhem (private; shared with testing@devpost.com)
 
 ## Demo video
-`<<FILL IN: public YouTube URL, under 3:00>>`
+https://youtu.be/e_pY9SIB8Wc
 
 ## Built with
 JavaScript (no build step), Node.js, HTML Canvas, Twitch EventSub WebSocket, Twitch OAuth, OBS Browser Source, OpenAI Codex, Claude Code, Kokoro-82M (local announcer voice clips).
