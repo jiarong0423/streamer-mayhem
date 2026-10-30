@@ -25,7 +25,7 @@ In the main Codex thread (about 16 hours and 1,615 tool calls) we designed the p
 https://github.com/jiarong0423/streamer-mayhem
 
 ## Demo video
-https://youtu.be/TUfO1Rxj8nk
+https://youtu.be/x7fBKSyv6oE
 
 ## Built with
 JavaScript (no build step), Node.js, HTML Canvas, Twitch EventSub WebSocket, Twitch OAuth, OBS Browser Source, OpenAI Codex, Claude Code, Kokoro-82M (local announcer voice clips).

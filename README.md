@@ -16,7 +16,7 @@ A Twitch interactive game for a seated streamer, themed as basketball: chat shoo
 
 ## Screenshots
 
-Frames from the demo video (https://youtu.be/TUfO1Rxj8nk). The game footage is a local recording, not a live broadcast; the chat window is a real Twitch chat.
+Frames from the demo video (https://youtu.be/x7fBKSyv6oE). The game footage is a local recording, not a live broadcast; the chat window is a real Twitch chat.
 
 | | |
 |---|---|
