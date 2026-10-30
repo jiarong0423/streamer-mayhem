@@ -5,7 +5,7 @@ import {drawHud,drawBanner,strokedText,COLORS,MIN_TEXT_PX} from './art.mjs';
 import {drawHoop} from './arena_draw.mjs';
 import {drawTicker,drawVersus,TICKER_H,VERSUS_H,TONE_COLORS} from './ticker.mjs';
 import {projectCameraPoint,visiblePointToCanvas} from './camera_geometry.mjs';
-import {gridCell,comboMultiplier} from './matrix.mjs';
+import {gridCell,comboBonus} from './matrix.mjs';
 
 export const OVERLAY_HINT='!drop 1 / 3 = 3PT  ·  !drop 2 = 2PT  ·  !pie 1-3 = pie';
 export const PAUSED_TEXT='GAME PAUSED';
@@ -40,7 +40,7 @@ export function drawOverlayScene(ctx,state,{now,receivedAt=now}={}) {
   }
   const hasStrip=Boolean(raw.ticker||raw.versus);
   if(Number.isFinite(snapshot.score)){
-    const combo=Number.isFinite(raw.combo)?{combo:raw.combo,multiplier:comboMultiplier(raw.combo)}:{};
+    const combo=Number.isFinite(raw.combo)?{combo:raw.combo,bonus:comboBonus(raw.combo)}:{};
     drawHud(ctx,hudRect(rect,{ticker:hasStrip,versus:Boolean(raw.versus)}),{...snapshot,...combo,roundLeftMs:raw.roundLeftMs},now,{panelAlpha:.72});
   }
   if(hasStrip){

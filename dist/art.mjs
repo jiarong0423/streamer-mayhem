@@ -159,11 +159,258 @@ function drawAim(ctx,cx,y,r,p,hue){
 export function drawOrb(ctx,cx,y,r,now=0,p=0,style=false){   // style: false/'two' orange, true/'three' violet, 'star' gold
   const star=style==='star',three=style===true||style==='three';
   for(let i=3;i>=1;i--){ctx.fillStyle=`${star?'rgba(255,210,63,':three?'rgba(160,110,255,':'rgba(255,140,40,'}${(.09*(4-i)).toFixed(3)})`;ctx.beginPath();ctx.arc(cx,y-i*r*1.1,r*(1-.2*i),0,2*Math.PI);ctx.fill();}
-  const flash=.3+.4*(.5+.5*Math.sin(now/1000*6*Math.PI)),len=r*2.2;
-  ctx.save();ctx.strokeStyle=`rgba(255,246,191,${flash.toFixed(3)})`;ctx.lineWidth=Math.max(1.5,r/8);ctx.lineCap='round';
-  ctx.beginPath();ctx.moveTo(cx-len,y);ctx.lineTo(cx+len,y);ctx.moveTo(cx,y-len);ctx.lineTo(cx,y+len);ctx.stroke();ctx.restore();
   drawAim(ctx,cx,y,r,p,'217,249,101');
   stamp(ctx,star?'orbstar':three?'orb3':'orb',r,2.6,star?PAINT_ORBSTAR:three?PAINT_ORB3:PAINT_ORB,cx,y);
+}
+// ---------- cream pie in flight and on the face (drawn by Gemini from the owner's brief, reviewed and adapted here; original artwork, no external assets) ----------
+const PIE_HIT_MS=1300,PIE_FOAM_SCALE=1,PIE_DRIP_SCALE=1;   // tuning: effect length (ms), foam thickness, drip length
+const pieEaseOutBack=t=>{const c1=1.55,c3=c1+1;return 1+c3*Math.pow(t-1,3)+c1*Math.pow(t-1,2);};
+const pieEaseOutCubic=t=>1-Math.pow(1-t,3);
+// [dx, dy, radius, shadeLayer (0 = outer rim, 1 = mid body, 2 = top dollop)]
+const PIE_FACE_PUFFS = [
+  [ 0.00, -0.88, 0.72, 0], [-0.50, -0.78, 0.68, 0], [ 0.50, -0.78, 0.68, 0],
+  [-0.86, -0.42, 0.70, 0], [ 0.86, -0.42, 0.70, 0], [-0.95,  0.04, 0.74, 0],
+  [ 0.95,  0.04, 0.74, 0], [-0.84,  0.48, 0.72, 0], [ 0.84,  0.48, 0.72, 0],
+  [-0.48,  0.80, 0.75, 0], [ 0.48,  0.80, 0.75, 0], [ 0.00,  0.88, 0.78, 0],
+  [-0.26, -0.58, 0.62, 1], [ 0.26, -0.58, 0.62, 1], [ 0.00, -0.52, 0.65, 1],
+  [ 0.00, -0.18, 0.46, 1], [-0.80, -0.16, 0.56, 1], [ 0.80, -0.16, 0.56, 1],
+  [-0.56,  0.22, 0.68, 1], [ 0.56,  0.22, 0.68, 1], [ 0.00,  0.18, 0.66, 1],
+  [-0.32,  0.50, 0.70, 1], [ 0.32,  0.50, 0.70, 1], [ 0.00,  0.58, 0.72, 1],
+  [-0.36, -0.66, 0.48, 2], [ 0.34, -0.64, 0.48, 2], [-0.64,  0.28, 0.52, 2],
+  [ 0.64,  0.28, 0.52, 2], [-0.18,  0.40, 0.55, 2], [ 0.22,  0.42, 0.52, 2],
+];
+// [dx in rx units, startY in ry units, thickness factor, length factor]
+const PIE_FACE_DRIPS = [
+  [-0.74, 0.56, 0.36, 1.05], [-0.38, 0.78, 0.44, 1.65], [-0.04, 0.86, 0.40, 1.20],
+  [ 0.36, 0.80, 0.48, 1.95], [ 0.72, 0.58, 0.36, 1.15],
+];
+
+export function drawPie(ctx, cx, y, r, now = 0) {
+  ctx.save();
+  ctx.translate(cx, y);
+  const tilt = Math.sin(now * 0.012) * 0.05;
+  const squash = 1 + Math.cos(now * 0.024) * 0.025;
+  ctx.rotate(tilt);
+  ctx.scale(squash, 2 - squash);
+  const lw = Math.max(1.2, r * 0.055);
+  ctx.lineWidth = lw;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.22)';
+  ctx.beginPath();
+  ctx.ellipse(0, r * 0.56, r * 1.28, r * 0.42, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#d96b83';
+  ctx.strokeStyle = '#a8445b';
+  ctx.beginPath();
+  ctx.moveTo(-r * 1.26, r * 0.22);
+  ctx.lineTo(-r * 0.96, r * 0.52);
+  ctx.quadraticCurveTo(0, r * 0.74, r * 0.96, r * 0.52);
+  ctx.lineTo(r * 1.26, r * 0.22);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#f6a8b8';
+  ctx.strokeStyle = '#c45b72';
+  ctx.beginPath();
+  ctx.ellipse(0, r * 0.22, r * 1.32, r * 0.42, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#eef4fa';
+  ctx.strokeStyle = 'rgba(188, 204, 222, 0.75)';
+  ctx.beginPath();
+  ctx.moveTo(-r * 1.12, r * 0.14);
+  ctx.quadraticCurveTo(-r * 1.18, -r * 0.28, -r * 0.65, -r * 0.42);
+  ctx.quadraticCurveTo(0, -r * 0.58, r * 0.65, -r * 0.42);
+  ctx.quadraticCurveTo(r * 1.18, -r * 0.28, r * 1.12, r * 0.14);
+  ctx.quadraticCurveTo(r * 0.84, r * 0.40, r * 0.52, r * 0.26);
+  ctx.quadraticCurveTo(r * 0.26, r * 0.44, 0, r * 0.30);
+  ctx.quadraticCurveTo(-r * 0.26, r * 0.44, -r * 0.52, r * 0.26);
+  ctx.quadraticCurveTo(-r * 0.84, r * 0.40, -r * 1.12, r * 0.14);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#fbfdff';
+  ctx.beginPath();
+  ctx.moveTo(-r * 0.88, -r * 0.10);
+  ctx.quadraticCurveTo(-r * 0.92, -r * 0.56, -r * 0.38, -r * 0.68);
+  ctx.quadraticCurveTo(0, -r * 0.82, r * 0.38, -r * 0.68);
+  ctx.quadraticCurveTo(r * 0.92, -r * 0.56, r * 0.88, -r * 0.10);
+  ctx.quadraticCurveTo(r * 0.45, r * 0.12, 0, r * 0.02);
+  ctx.quadraticCurveTo(-r * 0.45, r * 0.12, -r * 0.88, -r * 0.10);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.moveTo(-r * 0.52, -r * 0.44);
+  ctx.quadraticCurveTo(-r * 0.48, -r * 0.86, -r * 0.06, -r * 0.98);
+  ctx.quadraticCurveTo(r * 0.18, -r * 1.04, r * 0.12, -r * 0.80);
+  ctx.quadraticCurveTo(r * 0.50, -r * 0.72, r * 0.52, -r * 0.42);
+  ctx.quadraticCurveTo(0, -r * 0.24, -r * 0.52, -r * 0.44);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(188, 204, 222, 0.55)';
+  ctx.beginPath();
+  ctx.moveTo(-r * 0.55, -r * 0.12);
+  ctx.quadraticCurveTo(-r * 0.20, -r * 0.32, r * 0.15, -r * 0.16);
+  ctx.moveTo(r * 0.22, -r * 0.46);
+  ctx.quadraticCurveTo(r * 0.48, -r * 0.34, r * 0.62, -r * 0.08);
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+  ctx.beginPath();
+  ctx.ellipse(-r * 0.36, -r * 0.38, r * 0.22, r * 0.11, -0.35, 0, Math.PI * 2);
+  ctx.ellipse(r * 0.28, -r * 0.22, r * 0.18, r * 0.09, 0.3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+export function drawPieHit(ctx, anchor, unit, age, calm = false) {
+  if (age < 0 || age >= PIE_HIT_MS) return;
+  const impactT = clamp(age / 130, 0, 1);
+  const grow = pieEaseOutBack(impactT);
+  const squashFlat = 1 - impactT;
+  const fadeStart = PIE_HIT_MS * 0.7;
+  const fade = 1 - clamp((age - fadeStart) / (PIE_HIT_MS - fadeStart), 0, 1);
+  const scale = 0.58 + 0.42 * grow;
+  const rx = unit * 2.35 * scale * (1 + 0.38 * squashFlat);
+  const ry = unit * 2.95 * scale * (1 - 0.28 * squashFlat);
+  const cx0 = anchor.x;
+  const cy0 = anchor.y - unit * 0.15 + unit * 0.25 * (age / PIE_HIT_MS);
+  ctx.save();
+  ctx.globalAlpha = fade;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  const outlineW = Math.max(1.5, unit * 0.075);
+  const dripProgress = pieEaseOutCubic(clamp((age - 50) / (PIE_HIT_MS - 50), 0, 1));
+  for (let i = 0; i < PIE_FACE_DRIPS.length; i++) {
+    const [dx, dy, thick, lenMult] = PIE_FACE_DRIPS[i];
+    const x = cx0 + dx * rx;
+    const y0 = cy0 + dy * ry;
+    const w = unit * thick * PIE_FOAM_SCALE;
+    const l = unit * (0.6 + 4.2 * dripProgress) * lenMult * PIE_DRIP_SCALE;
+    ctx.strokeStyle = 'rgba(188, 204, 222, 0.75)';
+    ctx.lineWidth = w * 2 + outlineW * 2;
+    ctx.beginPath();
+    ctx.moveTo(x, y0);
+    ctx.lineTo(x, y0 + l);
+    ctx.stroke();
+    ctx.strokeStyle = '#fbfdff';
+    ctx.fillStyle = '#fbfdff';
+    ctx.lineWidth = w * 2;
+    ctx.beginPath();
+    ctx.moveTo(x, y0);
+    ctx.lineTo(x, y0 + l);
+    ctx.stroke();
+    const tipR = w * 1.28;
+    ctx.strokeStyle = 'rgba(188, 204, 222, 0.65)';
+    ctx.lineWidth = outlineW;
+    ctx.beginPath();
+    ctx.arc(x, y0 + l, tipR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(x - tipR * 0.28, y0 + l - tipR * 0.25, tipR * 0.35, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = '#e9f0f8';
+  ctx.strokeStyle = 'rgba(188, 204, 222, 0.75)';
+  ctx.lineWidth = outlineW * 1.5;
+  for (let i = 0; i < PIE_FACE_PUFFS.length; i++) {
+    const [dx, dy, rad, layer] = PIE_FACE_PUFFS[i];
+    if (layer !== 0) continue;
+    const px = cx0 + dx * rx;
+    const py = cy0 + dy * ry;
+    const pr = unit * rad * PIE_FOAM_SCALE * (0.7 + 0.3 * impactT);
+    ctx.beginPath();
+    ctx.arc(px, py, pr, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+  ctx.fillStyle = '#fbfdff';
+  for (let i = 0; i < PIE_FACE_PUFFS.length; i++) {
+    const [dx, dy, rad, layer] = PIE_FACE_PUFFS[i];
+    if (layer > 1) continue;
+    const px = cx0 + dx * rx;
+    const py = cy0 + dy * ry;
+    const pr = unit * rad * PIE_FOAM_SCALE * (0.7 + 0.3 * impactT);
+    ctx.beginPath();
+    ctx.arc(px, py, pr, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.strokeStyle = 'rgba(188, 204, 222, 0.65)';
+  ctx.lineWidth = outlineW;
+  for (const side of [-1, 1]) {
+    const ex = cx0 + side * rx * 0.40;
+    const ey = cy0 - ry * 0.20;
+    ctx.beginPath();
+    ctx.arc(ex, ey, unit * 0.78, 0.15 * Math.PI, 0.85 * Math.PI);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(ex, ey, unit * 0.78, 1.15 * Math.PI, 1.85 * Math.PI);
+    ctx.stroke();
+  }
+  ctx.lineWidth = outlineW;
+  for (let i = 0; i < PIE_FACE_PUFFS.length; i++) {
+    const [dx, dy, rad, layer] = PIE_FACE_PUFFS[i];
+    if (layer !== 2) continue;
+    const px = cx0 + dx * rx;
+    const py = cy0 + dy * ry;
+    const pr = unit * rad * PIE_FOAM_SCALE * (0.7 + 0.3 * impactT);
+    ctx.fillStyle = '#fbfdff';
+    ctx.strokeStyle = 'rgba(188, 204, 222, 0.6)';
+    ctx.beginPath();
+    ctx.arc(px, py, pr, 0.1 * Math.PI, 0.95 * Math.PI);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
+    ctx.beginPath();
+    ctx.ellipse(px - pr * 0.22, py - pr * 0.28, pr * 0.42, pr * 0.24, -0.4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  if (age < 130 && !calm) {
+    const burstAlpha = (1 - impactT) * 0.65 * fade;
+    ctx.save();
+    ctx.globalAlpha = burstAlpha;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = unit * 0.22 * (1 - impactT);
+    ctx.beginPath();
+    ctx.ellipse(cx0, cy0, rx * 1.12, ry * 1.08, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+  const ct = age / 1000;
+  if (ct < 0.8) {
+    const lumpLife = clamp(ct / 0.8, 0, 1);
+    ctx.lineWidth = outlineW;
+    for (let i = 0; i < 14; i++) {
+      const ang = i * 0.4488 - 1.35 + ((i % 3) - 1) * 0.08;
+      const sp = unit * (6.8 + ((i * 7) % 5) * 2.1);
+      const vx = Math.cos(ang) * sp;
+      const vy = Math.sin(ang) * sp * 0.82;
+      const px = cx0 + vx * ct;
+      const py = cy0 + vy * ct + unit * 15.5 * ct * ct;
+      const rot = Math.atan2(vy + unit * 31.0 * ct, vx);
+      const rr = unit * (0.34 + 0.14 * (i % 3)) * PIE_FOAM_SCALE * (1 - lumpLife * 0.55);
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.rotate(rot);
+      ctx.fillStyle = '#fbfdff';
+      ctx.strokeStyle = 'rgba(188, 204, 222, 0.65)';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, rr * 1.35, rr * 0.82, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(-rr * 0.25, -rr * 0.2, rr * 0.35, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+  ctx.restore();
 }
 export function drawBomb(ctx,cx,y,r,now=0,p=0){
   const near=easeInCubic(p),breath=.5+.15*Math.sin(2*Math.PI*1.5*(1+near)*now/1000);
@@ -192,7 +439,7 @@ export function drawBomb(ctx,cx,y,r,now=0,p=0){
 }
 
 // ---------- feedback (CATCH / BOMB / AVOID / MISS / HIT) ----------
-export const SPLAT_MS=1000,FEEDBACK_MS=1000,FEEDBACK_FADE_MS=300,POP_MS=160,BOMB_SHAKE_MS=300;
+export const SPLAT_MS=1300,FEEDBACK_MS=1000,FEEDBACK_FADE_MS=300,POP_MS=160,BOMB_SHAKE_MS=300;
 const MINUS='−';
 const STYLE={
   CATCH:{color:COLORS.gold,scored:true},BOMB:{color:COLORS.dangerText,scored:true},AVOID:{color:COLORS.avoid,scored:true},
@@ -201,16 +448,19 @@ const STYLE={
 const fin=Number.isFinite;
 export function feedbackLabel(effect){
   const d=effect.scoreDelta,st=STYLE[effect.outcome];
-  if(st?.scored&&fin(d)&&d!==0)return `${effect.outcome==='CATCH'&&fin(effect.points)?`${effect.points}PT`:effect.outcome} ${d>0?'+':MINUS}${Math.abs(d)}`;
-  return effect.outcome;
+  if(st?.scored&&fin(d)&&d!==0)return `${effect.outcome==='CATCH'&&effect.judgement?effect.judgement:effect.outcome==='CATCH'&&fin(effect.points)?`${effect.points}PT`:effect.outcome==='BOMB'?'PIE':effect.outcome} ${d>0?'+':MINUS}${Math.abs(d)}`;
+  return effect.outcome==='BOMB'?'PIE':effect.outcome;
 }
 // Where the feedback shows: the event point (effect.x/y, 0..1 of the window) or a per-outcome default.
-export function feedbackAnchor(effect,rect,{catcherX=.5,faceY}={}){
+export function feedbackAnchor(effect,rect,{catcherX=.5,faceY,faceX}={}){
   const r=Math.max(10,Math.min(26,rect.width/40)),has=fin(effect.x)&&fin(effect.y);
   const point=(rx,ry)=>({x:rect.x+clamp(has?effect.x:rx,0,1)*rect.width,y:rect.y+clamp(has?effect.y:ry,0,1)*rect.height});
   switch(effect.outcome){
     case 'CATCH':{const p=point(catcherX,DROP_FLOOR);return {x:p.x,y:has?p.y:p.y-r*2};}
-    case 'BOMB':return point(catcherX,fin(faceY)?faceY:DROP_FLOOR);   // a pie ends on the face
+    case 'BOMB':{   // a pie ends on the live face; the floor spot stored in the effect is only the fallback when the face is unknown
+      if(fin(faceX)&&fin(faceY))return {x:rect.x+clamp(faceX,0,1)*rect.width,y:rect.y+clamp(faceY,0,1)*rect.height};
+      return point(catcherX,DROP_FLOOR);
+    }
     case 'MISS':return point(catcherX,DROP_FLOOR);
     case 'AVOID':return point(.5,.35);
     default:return {x:rect.x+rect.width/2,y:rect.y+Math.min(72,rect.height/4)};
@@ -222,38 +472,29 @@ export function shakeOffset(age,width){
   return {x:amp*Math.sin(age*.11*Math.PI),y:amp*Math.cos(age*.17*Math.PI),amp};
 }
 // Draws one feedback; returns a descriptor of what was drawn (null when expired) so tests and callers can read position/colour/scale.
-export function drawFeedback(ctx,rect,effect,now,{catcherX=.5,faceY}={}){
+export function drawFeedback(ctx,rect,effect,now,{catcherX=.5,faceY,faceX,calm=false}={}){
   if(!effect||!fin(effect.at)||!fin(now))return null;
-  const age=Math.max(0,now-effect.at);if(age>=FEEDBACK_MS)return null;
-  const st=STYLE[effect.outcome]??STYLE.HIT,anchor=feedbackAnchor(effect,rect,{catcherX,faceY}),label=feedbackLabel(effect);
+  const age=Math.max(0,now-effect.at);if(age>=(effect.outcome==='BOMB'?SPLAT_MS:FEEDBACK_MS))return null;
+  const st=STYLE[effect.outcome]??STYLE.HIT,anchor=feedbackAnchor(effect,rect,{catcherX,faceY,faceX}),label=feedbackLabel(effect);
   const scale=age>=POP_MS?1:.6+.4*easeOutBack(age/POP_MS);
   const fadeT=clamp((age-(FEEDBACK_MS-FEEDBACK_FADE_MS))/FEEDBACK_FADE_MS,0,1),alpha=(1-fadeT)*(st.alpha??1),rise=-rect.height*.04*easeOutQuad(fadeT);
   const size=clamp(rect.height/8,MIN_TEXT_PX,48)*(st.scale??1);
   ctx.save();clipTo(ctx,rect);
   const unit=Math.max(7,rect.width/48);
-  if(effect.outcome==='BOMB'&&age<350){
+  if(effect.outcome==='BOMB'&&age<350&&!calm){
     const p=easeOutExpo(age/350),r=rect.width/6*p;
     if(r>0){const g=ctx.createRadialGradient(anchor.x,anchor.y,0,anchor.x,anchor.y,r);g.addColorStop(0,'rgba(255,139,42,.9)');g.addColorStop(.6,'rgba(255,139,42,.45)');g.addColorStop(1,'rgba(255,139,42,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(anchor.x,anchor.y,r,0,2*Math.PI);ctx.fill();}
   }
-  if(effect.outcome==='BOMB'&&age<SPLAT_MS){
-    // Cream splat on the face: a white blob with satellite blobs and drips that run down and fade out.
-    const grow=easeOutExpo(Math.min(1,age/110)),fade=1-clamp((age-SPLAT_MS+300)/300,0,1),R=unit*6.2*grow;   // the pie hits the lens: a big splat over the face
-    ctx.save();ctx.globalAlpha=fade;ctx.fillStyle='#fff7e6';ctx.strokeStyle='rgba(214,170,110,.9)';ctx.lineWidth=Math.max(1.5,unit*.18);
-    const blob=(x,y,r)=>{ctx.beginPath();ctx.arc(x,y,r,0,2*Math.PI);ctx.fill();ctx.stroke();};
-    blob(anchor.x,anchor.y,R);
-    for(let i=0;i<8;i++){const ang=i*Math.PI/4+.3,d=R*(.85+.25*((i*5)%3)/2);blob(anchor.x+Math.cos(ang)*d,anchor.y+Math.sin(ang)*d,R*(.28+.12*(i%3)));}
-    for(const dx of [-.55,0,.5]){const len=unit*(1.2+4*easeOutQuad(Math.min(1,age/SPLAT_MS)))*(dx===0?1.3:1);ctx.fillRect(anchor.x+dx*R-unit*.28,anchor.y+R*.4,unit*.56,len);}
-    ctx.restore();
-  }
+  if(effect.outcome==='BOMB'&&age<SPLAT_MS)drawPieHit(ctx,anchor,rect.width/33.75,age,calm);   // the face is about 4.5 of these units wide (the window is 7.5 face widths)
   if(effect.outcome==='MISS'&&age<400){
     const t=easeOutQuad(age/400);ctx.strokeStyle=rgba(COLORS.gray,.5*(1-t));ctx.lineWidth=Math.max(2,unit*.4);ctx.beginPath();ctx.ellipse(anchor.x,anchor.y,unit*(2+4*t),unit*(1+1.4*t),0,0,2*Math.PI);ctx.stroke();
   }
-  const tx=anchor.x,ty=anchor.y+rise;
+  const tx=anchor.x,ty=anchor.y+rise-(effect.outcome==='BOMB'?rect.width/33.75*4.6:0);   // the pie label sits above the splat so it does not cover it
   ctx.translate(tx,ty);ctx.scale(scale,scale);
   const d=effect.scoreDelta;
   if(effect.outcome==='CATCH'&&fin(d)&&d!==0){
     strokedText(ctx,`${d>0?'+':MINUS}${Math.abs(d)}`,0,0,size,st.color,{alpha});
-    strokedText(ctx,'CATCH',0,-size*.95,size*.5,st.color,{alpha});
+    strokedText(ctx,effect.judgement??'CATCH',0,-size*.95,size*.5,st.color,{alpha});
     if(fin(effect.combo)&&effect.combo>1)strokedText(ctx,`×${effect.combo}`,size*1.5,0,size*.7,COLORS.paper,{alpha,align:'left'});
   }else strokedText(ctx,label,0,0,size,st.color,{alpha});
   ctx.restore();
@@ -270,7 +511,7 @@ export function drawVignette(ctx,rect,strength,{inner=.45,rgb='255,60,50',ring=f
 // ---------- HUD ----------
 const panel=(ctx,x,y,w,h,alpha)=>{ctx.save();ctx.fillStyle=`rgba(10,16,10,${alpha})`;ctx.strokeStyle='rgba(255,255,255,.14)';ctx.lineWidth=1;ctx.beginPath();ctx.roundRect(x,y,w,h,Math.min(14,h/3));ctx.fill();ctx.stroke();ctx.restore();};
 export const formatClock=ms=>{const s=Math.max(0,Math.ceil(ms/1000));return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;};
-// score/hp are required for the score panel; combo, multiplier and roundLeftMs are optional and simply not drawn when missing.
+// score/hp are required for the score panel; combo, bonus and roundLeftMs are optional and simply not drawn when missing.
 export function drawHud(ctx,rect,s,now=0,{panelAlpha=.62}={}){
   if(!s)return null;
   const st=stateFor(ctx),H=rect.height,u=rect.width/100,m=u*2,drawn=[];
@@ -312,7 +553,7 @@ export function drawHud(ctx,rect,s,now=0,{panelAlpha=.62}={}){
       const t=clamp((now-(st.comboAt??-1e9))/100,0,1),pop=st.comboAt===undefined?1:1+.2*Math.sin(Math.PI*t);
       ctx.save();ctx.translate(cx,cy);ctx.scale(pop,pop);strokedText(ctx,`×${Math.round(s.combo)}`,0,0,size,COLORS.gold);ctx.restore();
       strokedText(ctx,'COMBO',cx,cy-size*.95,size*.34,COLORS.paper);drawn.push('combo');
-      if(fin(s.multiplier)&&s.multiplier>1){strokedText(ctx,`SCORE ×${Number.isInteger(s.multiplier)?s.multiplier:s.multiplier.toFixed(1)}`,cx,cy+size*.5,size*.4,COLORS.lime);drawn.push('multiplier');}
+      if(fin(s.bonus)&&s.bonus>0){strokedText(ctx,`BONUS +${Math.round(s.bonus)}`,cx,cy+size*.5,size*.4,COLORS.lime);drawn.push('bonus');}
     }else if(st.lostAt!==undefined&&now-st.lostAt<200){
       const sx=4*Math.sin(2*Math.PI*20*(now-st.lostAt)/1000);
       strokedText(ctx,`×${Math.round(st.lostVal)}`,cx+sx,cy,size,COLORS.danger,{alpha:1-(now-st.lostAt)/200});drawn.push('comboLost');
@@ -357,4 +598,16 @@ export function drawBanner(ctx,rect,banner,now){
   }
   ctx.restore();
   return {kind,grade,age};
+}
+
+// Dizzy stars circling above a stunned head (u = about a quarter of a face width).
+export function drawStunStars(ctx,cx,cy,u,now=0){
+  ctx.save();ctx.fillStyle='#ffd23f';ctx.strokeStyle='#a86f00';ctx.lineWidth=Math.max(1,u*.12);ctx.lineJoin='round';
+  for(let k=0;k<3;k++){
+    const a=now/260+k*2*Math.PI/3,x=cx+Math.cos(a)*u*2.2,y=cy+Math.sin(a)*u*.7,r=u*(.55+.12*Math.sin(a*2));
+    ctx.beginPath();
+    for(let i=0;i<10;i++){const rr=i%2?r*.45:r,t=-Math.PI/2+i*Math.PI/5+a*.3;ctx[i?'lineTo':'moveTo'](x+Math.cos(t)*rr,y+Math.sin(t)*rr);}
+    ctx.closePath();ctx.fill();ctx.stroke();
+  }
+  ctx.restore();
 }

@@ -32,8 +32,9 @@ test('DROP-02 being in the dropped column when it lands is a CATCH with score an
     assert.equal(accepted.accepted,true);assert.equal(accepted.kind,'DROP');assert.deepEqual(accepted.cells,dropCells(n));
     s.feed(s.clock.now+s.game.config.dropFall+200,column(n));
     const result=s.game.snapshot().lastResult;
-    assert.equal(result.outcome,'CATCH');assert.equal(result.scoreDelta,s.game.config.dropScore);assert.equal(result.hpDelta,0);
-    assert.equal(s.game.hp,100);assert.equal(s.game.score,s.game.config.dropScore);
+    const expected=n===2?3:4;   // lane centre, dead on: PERFECT (+1) on a two-pointer (2) in the middle lane or a three-pointer (3) at the sides
+    assert.equal(result.outcome,'CATCH');assert.equal(result.judgement,'PERFECT');assert.equal(result.scoreDelta,expected);assert.equal(result.hpDelta,0);
+    assert.equal(s.game.hp,100);assert.equal(s.game.score,expected);
   }
 });
 
@@ -176,8 +177,8 @@ test('DROP-17 bomb outcomes: catching costs points (not below zero), avoiding ea
   t.feed(t.clock.now+t.game.config.dropFall+200,{x:.5,y:.5,visibility:1});
   r=t.game.snapshot().lastResult;assert.equal(r.outcome,'AVOID');assert.equal(r.scoreDelta,t.game.config.avoidScore);
   const u=setup();u.feed(100,{x:.5,y:.5,visibility:1});u.send('!drop 2');u.feed(u.clock.now+u.game.config.dropFall+200,{x:.5,y:.5,visibility:1});
-  assert.equal(u.game.score,25);u.feed(u.clock.now+500,{x:.5,y:.5,visibility:1});u.send('!bomb 2','other');u.feed(u.clock.now+u.game.config.dropFall+200,{x:.5,y:.5,visibility:1});
-  assert.equal(u.game.snapshot().lastResult.scoreDelta,-25);assert.equal(u.game.score,0);
+  assert.equal(u.game.score,3);u.feed(u.clock.now+500,{x:.5,y:.5,visibility:1});u.send('!bomb 2','other');u.feed(u.clock.now+u.game.config.dropFall+200,{x:.5,y:.5,visibility:1});
+  assert.equal(u.game.snapshot().lastResult.scoreDelta,-2);assert.equal(u.game.score,1);
 });
 test('DROP-18 a forged overlay drop without cells, with a bad variant or out-of-range progress is refused',()=>{
   const session='a'.repeat(32),geometry=createCameraGeometry({canvasWidth:1280,canvasHeight:720,viewport:{x:0,y:0,width:1280,height:720},sourceWidth:1280,sourceHeight:720});
@@ -215,10 +216,10 @@ test('LAND-02 (theme) with landJitter the catch is judged at the per-shot landin
 });
 
 import {dropPoints} from '../dist/drop_lanes.mjs';
-test('PTS-01 (theme) a ball landing near the middle is a two-pointer (20), away from it a three-pointer (30); combo multiplies both',()=>{
+test('PTS-01 (theme) a ball landing near the middle is a two-pointer, away from it a three-pointer; caught dead centre it is PERFECT (+1)',()=>{
   assert.equal(dropPoints(.5),2);assert.equal(dropPoints(.62),2);assert.equal(dropPoints(.66),3);assert.equal(dropPoints(.34),3);assert.equal(dropPoints(NaN),2);
   const score=(col)=>{const s=setup({landJitter:.12});s.feed(100,point(.5));const r=s.send('!drop '+col);s.feed(s.clock.now+s.game.config.dropFall+200,point(r.landX));const res=s.game.snapshot().lastResult;return {pts:res.points,delta:res.scoreDelta,out:res.outcome,landX:r.landX};};
-  const seen=new Map();for(let c=1;c<=3;c++){const r=score(c);assert.equal(r.out,'CATCH');assert.equal(r.delta,r.pts*10);seen.set(r.pts,true);assert.equal(r.pts,dropPoints(r.landX));}
+  const seen=new Map();for(let c=1;c<=3;c++){const r=score(c);assert.equal(r.out,'CATCH');assert.equal(r.delta,r.pts+1);seen.set(r.pts,true);assert.equal(r.pts,dropPoints(r.landX));}
 });
 
 test('PTS-02 (theme) lane roles: the middle lane is a two-pointer near the middle, the left and right lanes are three-pointers on their own side',()=>{

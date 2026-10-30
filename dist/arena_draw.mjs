@@ -2,7 +2,7 @@ import {drawCameraOverlay} from './matrix_view.mjs';
 import {dropCaught,dropCaughtAt,DROP_CATCH_HALF,DROP_FLOOR} from './drop_lanes.mjs';
 import {drawTicker,drawVersus,TICKER_H,VERSUS_H} from './ticker.mjs';
 import {projectCameraPoint,visiblePointToCanvas} from './camera_geometry.mjs';
-import {COLORS,FONT_STACK,drawBackground,drawFeedback,drawHud,drawBanner,drawVignette,strokedText,shakeOffset,stateFor,tween,easeOutBack} from './art.mjs';
+import {COLORS,FONT_STACK,drawBackground,drawFeedback,drawHud,drawBanner,drawVignette,strokedText,shakeOffset,stateFor,tween,easeOutBack,drawStunStars} from './art.mjs';
 export {drawHud,drawBanner,drawFeedback};
 export const FONT=FONT_STACK;
 
@@ -13,13 +13,13 @@ export function hoopState(rect,position,drop){
 }
 // While an item is falling, a catcher the width of the catch zone follows the streamer along the bottom; it turns gold when it covers the item.
 // The caller has already clipped to `rect`. Shared by the game page and the OBS overlay (dist/overlay.mjs).
-export function drawHoop(ctx,rect,position,drop,{inLane,danger,ringRadius}={}){
+export function drawHoop(ctx,rect,position,drop,{inLane,danger,ringRadius,stunned=false}={}){
   if(inLane===undefined||danger===undefined)({inLane,danger}=hoopState(rect,position,drop));
   if(!Number.isFinite(ringRadius))ringRadius=Math.max(10,Math.min(26,rect.width/40));
   {
       const half=(drop?.catchHalf??DROP_CATCH_HALF)*rect.width,cy=rect.y+DROP_FLOOR*rect.height+Math.max(6,rect.height/60),h=Math.max(8,rect.height/36),cx=Math.max(rect.x+half,Math.min(rect.x+rect.width-half,position.x));
-      ctx.save();ctx.globalAlpha=.9;ctx.lineWidth=Math.max(1.5,h/6);
-      ctx.strokeStyle=inLane?(danger?'rgba(255,107,90,.7)':'rgba(255,210,63,.55)'):'rgba(231,241,220,.28)';ctx.beginPath();ctx.moveTo(position.x,position.y+ringRadius);ctx.lineTo(cx,cy-h);ctx.stroke();
+      ctx.save();ctx.globalAlpha=stunned?.5:.9;ctx.lineWidth=Math.max(1.5,h/6);
+      ctx.strokeStyle=inLane?(danger?'rgba(255,107,90,.7)':'rgba(255,210,63,.55)'):'rgba(231,241,220,.28)';
       if(inLane){ctx.shadowColor=danger?'rgba(255,107,90,.9)':'rgba(255,210,63,.9)';ctx.shadowBlur=h*1.5;}
       // Basketball hoop instead of a bar (theme): a net hangs under the rim and the ball falls into it. The rim keeps the in-lane / danger cue colours.
       const netTop=cy,netH=h*1.6,n=6,rimColor=inLane?(danger?COLORS.dangerWarm:COLORS.gold):'#FF7A2A';
@@ -33,25 +33,28 @@ export function drawHoop(ctx,rect,position,drop,{inLane,danger,ringRadius}={}){
 }
 
 function roundBox(ctx,x,y,w,h,r){ctx.beginPath();ctx.roundRect(x,y,w,h,r);}
-export function drawArena(ctx,snapshot,player,{now=0,lastEffect=null,banner=null,showMarker=false,tracking=true,geometry=null,backdrop=null,marker=false,ticker=null}={}) {
+export function drawArena(ctx,snapshot,player,{now=0,lastEffect=null,banner=null,showMarker=false,tracking=true,geometry=null,backdrop=null,marker=false,ticker=null,calm=false,facePlayer=null}={}) {
   const w=ctx.canvas.width,h=ctx.canvas.height;
   ctx.clearRect(0,0,w,h);drawBackground(ctx,w,h);
   if(!geometry){ctx.textAlign='center';strokedText(ctx,'CALIBRATION REQUIRED',w/2,h/2,32,COLORS.paper);ctx.textAlign='left';return {rect:null,cells:[]};}
   const rect=geometry.visible,store=stateFor(ctx);
   // A bomb shakes the whole picture for 300ms (the background is already drawn, so the shifted edge only shows background).
-  const shake=lastEffect&&lastEffect.outcome==='BOMB'&&snapshot.mode==='PLAYING'?shakeOffset(now-lastEffect.at,rect.width):{x:0,y:0,amp:0};
+  const shake=!calm&&lastEffect&&lastEffect.outcome==='BOMB'&&snapshot.mode==='PLAYING'?shakeOffset(now-lastEffect.at,rect.width):{x:0,y:0,amp:0};
   ctx.save();if(shake.amp>0)ctx.translate(shake.x,shake.y);
   ctx.fillStyle='rgba(15,22,15,.45)';ctx.fillRect(rect.x,rect.y,rect.width,rect.height);
   if(backdrop)backdrop(ctx,geometry);
   const playing=snapshot.mode==='PLAYING';
   const mapped=playing&&tracking&&player?projectCameraPoint({...player,visibility:1},geometry):null;
   const position=visiblePointToCanvas(mapped,geometry);
-  const overlay=drawCameraOverlay(ctx,geometry,playing||snapshot.mode==='TRACKING_LOST'||snapshot.mode==='RECOVERING'?snapshot:{...snapshot,attacks:[]},{clear:false,now,face:position});
+  const faceMapped=playing&&tracking&&facePlayer?projectCameraPoint({...facePlayer,visibility:1},geometry):null;
+  const facePos=visiblePointToCanvas(faceMapped,geometry)||position;   // the nose, so pie effects land on the face (the catcher follows the torso)
+  const overlay=drawCameraOverlay(ctx,geometry,playing||snapshot.mode==='TRACKING_LOST'||snapshot.mode==='RECOVERING'?snapshot:{...snapshot,attacks:[]},{clear:false,now,face:facePos});
   if(position&&marker){
     ctx.save();ctx.beginPath();ctx.rect(rect.x,rect.y,rect.width,rect.height);ctx.clip();// While an item is falling, a catcher the width of the catch zone follows the streamer along the bottom; it turns gold when it covers the item.
-    const drop=snapshot.attacks?.find(a=>a.kind==='DROP'),{inLane,danger}=hoopState(rect,position,drop);
+    const stun=snapshot.stun,holdPos=stun?{x:rect.x+stun.x*rect.width,y:position.y}:position;   // stunned: the hoop stays where the pie hit
+    const drop=snapshot.attacks?.find(a=>a.kind==='DROP'),{inLane,danger}=hoopState(rect,stun?holdPos:(drop?.variant==='BOMB'&&facePos?facePos:position),drop);
     const ringRadius=Math.max(10,Math.min(26,rect.width/40))*tween(store,'ring',inLane?1.35:1,now,120,easeOutBack);
-    if(drop)drawHoop(ctx,rect,position,drop,{inLane,danger,ringRadius});
+    if(drop)drawHoop(ctx,rect,holdPos,drop,{inLane,danger,ringRadius,stunned:Boolean(stun)});
     // The ring and dot on the face looked like a clown nose, so they are only drawn in debug mode (?debug=1); the catcher at the bottom is the control.
     if(showMarker){
       if(inLane){ctx.shadowColor=danger?'rgba(255,107,90,.9)':'rgba(255,210,63,.9)';ctx.shadowBlur=ringRadius;}
@@ -69,9 +72,10 @@ export function drawArena(ctx,snapshot,player,{now=0,lastEffect=null,banner=null
     roundBox(ctx,-21,-29,42,24,10);ctx.fillStyle='#243b27';ctx.fill();ctx.fillStyle='#d9f965';ctx.beginPath();ctx.arc(-9,-18,3,0,Math.PI*2);ctx.arc(9,-18,3,0,Math.PI*2);ctx.fill();
     ctx.strokeStyle='#d9f965';ctx.lineWidth=2;ctx.beginPath();ctx.arc(0,0,7,0,2*Math.PI);ctx.stroke();ctx.restore();
   }
+  if(snapshot.stun&&facePos)drawStunStars(ctx,facePos.x,facePos.y-rect.width/33.75*3.5,rect.width/33.75*.45,now);   // dizzy stars over the head
   const catcherX=position?clampRel((position.x-rect.x)/rect.width):.5;
-  if(lastEffect&&snapshot.mode==='PLAYING')drawFeedback(ctx,rect,lastEffect,now,{catcherX,faceY:position?(position.y-rect.y)/rect.height:undefined});
-  if(lastEffect&&lastEffect.outcome==='BOMB'&&snapshot.mode==='PLAYING'&&now-lastEffect.at<350)drawVignette(ctx,rect,.3*(1-(now-lastEffect.at)/350),{inner:.45});
+  if(lastEffect&&snapshot.mode==='PLAYING')drawFeedback(ctx,rect,lastEffect,now,{calm,catcherX,faceY:facePos?(facePos.y-rect.y)/rect.height:undefined,faceX:facePos?(facePos.x-rect.x)/rect.width:undefined});
+  if(!calm&&lastEffect&&lastEffect.outcome==='BOMB'&&snapshot.mode==='PLAYING'&&now-lastEffect.at<350)drawVignette(ctx,rect,.3*(1-(now-lastEffect.at)/350),{inner:.45});
   ctx.restore();
   // HUD and banner stay still while the picture shakes. combo / multiplier / roundLeftMs are optional extras on the snapshot.
   const strip=ticker?rect.height*(TICKER_H+(ticker.versus?VERSUS_H+.045:0)):0;

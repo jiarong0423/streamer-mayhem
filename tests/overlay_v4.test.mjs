@@ -171,7 +171,7 @@ test('F3 every tone has a colour and the score panel starts below the strip and 
   assert.ok(r.y>=rect.height*(TICKER_H+VERSUS_H));assert.equal(r.y+r.height,rect.height);assert.deepEqual(hudRect(rect),rect);
   const f=fake();drawOverlayScene(f.ctx,stateFor({combo:6,roundLeftMs:30000,ticker:[item()],versus:{streamer:1,chat:1}}),{now:1000,receivedAt:1000});
   assert.ok(f.calls.some(c=>c.k==='strokeText'&&c.a[0]==='0:30'),'round clock');assert.ok(f.calls.some(c=>c.k==='strokeText'&&c.a[0]==='×6'),'combo');
-  assert.ok(f.calls.some(c=>c.k==='strokeText'&&String(c.a[0]).startsWith('SCORE ×1.5')),'multiplier derived from the combo');
+  assert.ok(f.calls.some(c=>c.k==='strokeText'&&String(c.a[0]).startsWith('BONUS +1')),'bonus derived from the combo');
 });
 
 test('F4 hoop: the overlay draws the same rim as the page while an item falls, and none without an item or without a tracked point',()=>{

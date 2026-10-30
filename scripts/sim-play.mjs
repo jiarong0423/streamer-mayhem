@@ -7,12 +7,14 @@
 import { MatrixGame, gradeFor } from '../dist/matrix.mjs';
 import { DropWaves } from '../dist/drop_waves.mjs';
 import { dropLandX, DROP_CATCH_HALF } from '../dist/drop_lanes.mjs';
+import { LEVELS } from '../dist/difficulty.mjs';
 import { writeFileSync } from 'node:fs';
 
 const arg = (n, d) => { const a = process.argv.find((x) => x.startsWith(`--${n}=`)); return a ? a.split('=')[1] : d; };
-const HALF = Number(arg('half', DROP_CATCH_HALF));   // half width of the catch zone, e.g. --half=.06
+const LEVEL = LEVELS[arg('level', '')] ?? null;   // --level=EASY|NORMAL|HARD uses that level's catch zone, speed and pie share
+const HALF = LEVEL ? LEVEL.catchHalf : Number(arg('half', DROP_CATCH_HALF));   // half width of the catch zone, e.g. --half=.06
 const ROUNDS = Number(arg('rounds', 40)), ROUND_MS = 75000, STEP = 33;
-const THEME = { maxActive: 3, fallMin: 2200, fallMax: 3800, fallFloor: 1500, speedFactor: [1.1, 1.5], gapMin: 550, gapMax: 2400, gapBase: 800, gapMean: 1000, gapFloor: 550, laneStepMs: 450, bombStart: .12, bombEnd: .22, columnWeights: [.06, .88, .06], maxSame: 4 };
+const THEME = { ...(LEVEL ? { speed: LEVEL.speed } : {}), maxActive: 3, fallMin: 2200, fallMax: 3800, fallFloor: 1500, speedFactor: [1.1, 1.5], gapMin: 550, gapMax: 2400, gapBase: 800, gapMean: 1000, gapFloor: 550, laneStepMs: 450, bombStart: LEVEL ? LEVEL.pieShare[0] : .24, bombEnd: LEVEL ? LEVEL.pieShare[1] : .38, columnWeights: [.06, .88, .06], maxSame: 4 };
 
 function playRound(seed, { speed, react, staggered, crops = 'none' }) {
   const clock = { now: 0 }, results = [];
@@ -53,7 +55,7 @@ function table(label, opts) {
   for (let s = 1; s <= ROUNDS; s++) rows.push(playRound(s, opts));
   const sum = (k) => rows.reduce((a, r) => a + r[k], 0), balls = sum('caught') + sum('missed');
   const out = { label, rounds: ROUNDS, shotsPerRound: +(sum('shots') / ROUNDS).toFixed(1), catchRate: +(sum('caught') / Math.max(1, balls) * 100).toFixed(1), pieHitPerRound: +(sum('pieHit') / ROUNDS).toFixed(2), pieDodgedPerRound: +(sum('pieDodged') / ROUNDS).toFixed(2), unknownPerRound: +(sum('unknown') / ROUNDS).toFixed(2), avgScore: Math.round(sum('score') / ROUNDS), grades: {} };
-  for (const r of rows) { const g = gradeFor(r.score) ?? '-'; out.grades[g] = (out.grades[g] ?? 0) + 1; }
+  for (const r of rows) { const g = gradeFor(r.score, LEVEL?.grades) ?? '-'; out.grades[g] = (out.grades[g] ?? 0) + 1; }
   return out;
 }
 

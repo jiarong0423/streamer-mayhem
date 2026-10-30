@@ -43,27 +43,34 @@ export function parseBombCommand(text) {
 }
 export const dropCells = column => [column, column + 3, column + 6];
 
-// Round grade from the final score: S 1400, A 900, B 700, below that no grade (null).
-export function gradeFor(score) {
+// Round grade from the final score. The thresholds depend on the level (see LEVELS in difficulty.mjs); the default is NORMAL's: S 130, A 95, B 60, below that no grade (null).
+// Calibrated with scripts/sim-play.mjs --level=...: a bot that is PERFECT on every ball scores about 201 (EASY), 167 (NORMAL) and 139 (HARD) in a 75 s round,
+// so S is about 80% of that, A about 58% and B about 38%. (More pies means fewer balls, so the harder levels have a lower ceiling.)
+export const DEFAULT_GRADES = Object.freeze({ S: 130, A: 95, B: 60 });
+export function gradeFor(score, grades = DEFAULT_GRADES) {
   if (!finite(score)) return null;
-  // Theme: S 1400, A 900, B 700. The original 1600/1000/500 were set for the old 25-point catches; with 20/30-point balls and a slower round a bot that
-  // catches everything averages about 1700, so 1400 keeps S for a near-perfect round without making it a perfect-score-only grade.
-  return score >= 1400 ? 'S' : score >= 900 ? 'A' : score >= 700 ? 'B' : null;
+  return score >= grades.S ? 'S' : score >= grades.A ? 'A' : score >= grades.B ? 'B' : null;
 }
-// Combo multiplier for catches and bomb dodges: x1.5 from a streak of 5, x2 from 10.
-export const comboMultiplier = n => !finite(n) ? 1 : n >= 10 ? 2 : n >= 5 ? 1.5 : 1;
-const MISS_LIMIT = 3;
+// Rhythm-game scoring: a ball is worth 2 points (middle lane) or 3 (side lanes); how close the hoop was to the middle of the ball decides the judgement,
+// PERFECT +1, GREAT +0, GOOD -1 (never below 1). A streak of catches adds a bonus to every further catch: +1 per 5 in a row, at most +3. GOOD keeps the streak.
+export const JUDGEMENTS = Object.freeze([{ id:'PERFECT', within:.33, adjust:1 }, { id:'GREAT', within:.66, adjust:0 }, { id:'GOOD', within:1, adjust:-1 }]);
+export const judgementFor = ratio => !finite(ratio) || ratio < 0 ? null : (JUDGEMENTS.find(j => ratio <= j.within + 1e-9) ?? null);
+export const comboBonus = n => !finite(n) || n < 0 ? 0 : Math.min(3, Math.floor(n / 5));
+const MISS_LIMIT = 1;   // one missed ball ends the combo (it used to take three in a row)
 
 export class MatrixGame {
   constructor({ clock = () => performance.now(), onEvent = () => {}, options = {} } = {}) {
     this.clock = clock;
     this.onEvent = onEvent;
-    this.config = { maxAge: 250, confidence: .55, warning: 500, crossWarning: 1500, dropFall: 2500, dropScore: 25, bombPenalty: 25, avoidScore: 10, landJitter: 0, chatThrow: true, chatPieGap: 0, pieFall: null, catchHalf: null, recovery: 1000,
+    this.config = { maxAge: 250, confidence: .55, warning: 500, crossWarning: 1500, dropFall: 2500, dropScore: 25, bombPenalty: 2, avoidScore: 0, landJitter: 0, chatThrow: true, chatPieGap: 0, pieFall: null, catchHalf: null, staleGrace: 0, stunMs: 0, stunCooldown: 3000, pieReach: 1, recovery: 1000,
       actorCooldown: 3000, globalCooldown: 400, maxAttacks: 8, ringTime: 1000,
       ringDamage: 10, damage: 15, dodgeScore: 25, freezeDamage:12, freezeScore:100, freezeCooldown:8000,
       lavaDamage:5,lavaScore:75,actionCooldown:8000,
       dedupeTtl: 600000, dedupeLimit: 2000, maxResults: 200,
       ring: { left: .04, right: .96, top: .04, bottom: .96 }, ...options };
+    if (!finite(this.config.staleGrace) || this.config.staleGrace < 0) throw new RangeError('Invalid staleGrace');
+    if (!finite(this.config.pieReach) || this.config.pieReach <= 0) throw new RangeError('Invalid pieReach');
+    for (const key of ['stunMs','stunCooldown']) if (!finite(this.config[key]) || this.config[key] < 0) throw new RangeError(`Invalid ${key}`);
     if (this.config.catchHalf !== null && (!finite(this.config.catchHalf) || this.config.catchHalf <= 0 || this.config.catchHalf > .5)) throw new RangeError('Invalid catchHalf');
     if (this.config.pieFall !== null && (!finite(this.config.pieFall) || this.config.pieFall <= 0)) throw new RangeError('Invalid pieFall');
     for (const key of ['landJitter','maxAge','warning','crossWarning','dropFall','dropScore','bombPenalty','avoidScore','recovery','actorCooldown','globalCooldown','ringTime','dedupeTtl']) {
@@ -84,6 +91,7 @@ export class MatrixGame {
   reset() {
     this.wall = this.clock();
     if (!finite(this.wall)) throw new RangeError('Clock must be finite');
+    this.stunUntil = -Infinity; this.stunReadyAt = -Infinity; this.stunPoint = null;
     this.gameTime = 0; this.hp = 100; this.score = 0; this.combo = 0; this.missStreak = 0; this.mode = 'IDLE';
     this.connection = 'OFFLINE'; this.attacks = []; this.results = []; this.latestFrame = null;
     this.frames = []; this.seenFrameIds = new Set(); this.frameIdOrder = []; this.minCaptureTime = -Infinity;
@@ -131,6 +139,8 @@ export class MatrixGame {
   expireSource(now) {
     if (!finite(now) || now<this.wall) throw new RangeError('Clock must be monotonic');
     if (this.latestFrame && now-this.latestFrame.captureTime>this.config.maxAge && this.mode!=='IDLE' && this.mode!=='ROUND_END') {
+      // staleGrace: a short gap in the camera frames (a phone stalling for a moment) only freezes the falling balls in TRACKING_LOST; they are cancelled only after a longer silence.
+      if (this.config.staleGrace>0 && now-this.latestFrame.captureTime<=this.config.maxAge+this.config.staleGrace) return false;
       this.invalidateTracking('SOURCE_STALE',now);return true;
     }
     return false;
@@ -244,12 +254,18 @@ export class MatrixGame {
 
   resolve(attack, atWall) {
     const frame = [...this.frames].reverse().find(f => f.captureTime <= atWall) ?? null;
-    const point = this.frameUsable(frame, atWall) ? anchorPoint(frame, this.config.confidence) : null;
+    // The hoop (balls) follows the torso; a pie is thrown at the face, so a pie is judged where the nose is (the torso if there is no usable nose).
+    const faceHit = attack.variant === 'BOMB' && validPoint(frame?.nose, this.config.confidence);
+    // Stunned (hit by a pie): the head is frozen where it was hit for a moment, so drops that land meanwhile are judged at that spot.
+    const stunned = attack.kind === 'DROP' && this.stunPoint !== null && atWall < this.stunUntil;
+    const point = stunned ? this.stunPoint : (this.frameUsable(frame, atWall) ? (faceHit ? frame.nose : anchorPoint(frame, this.config.confidence)) : null);
     const current = gridCell(point, this.config.confidence);
     // A drop is the reverse of an attack: catching it scores, missing it costs nothing. Only the left/right position counts,
     // so leaving the window vertically does not make a drop unknown; only a missing or low-confidence point does.
     // The catcher follows the streamer's x; the drop is caught when the catcher covers the item's target x (see drop_lanes.mjs).
-    const caught = attack.kind === 'DROP' && point ? (attack.landX !== undefined ? dropCaughtAt(point.x, attack.landX, this.config.catchHalf ?? DROP_CATCH_HALF) : dropCaught(point.x, attack.cell - 3, this.config.catchHalf ?? DROP_CATCH_HALF)) : null;
+    // A pie covers a wider spot than the hoop (pieReach), so it is easier to be hit than to catch a ball.
+    const half = (this.config.catchHalf ?? DROP_CATCH_HALF) * (attack.variant === 'BOMB' ? this.config.pieReach : 1);
+    const caught = attack.kind === 'DROP' && point ? (attack.landX !== undefined ? dropCaughtAt(point.x, attack.landX, half) : dropCaught(point.x, attack.cell - 3, half)) : null;
     const inCells = attack.kind === 'DROP' ? caught === true : current !== null && (attack.cells ?? [attack.cell]).includes(current);
     const known = attack.kind === 'DROP' ? caught !== null : current !== null;
     const bomb = attack.variant === 'BOMB';
@@ -261,17 +277,30 @@ export class MatrixGame {
     const threat = outcome === 'AVOID' ? (point !== null && Number.isFinite(pieX) && Math.abs(point.x - pieX) <= PIE_THREAT_DISTANCE + 1e-9) : true;
     if (outcome === 'HIT') this.hp = Math.max(0,this.hp-this.config.damage);
     if (outcome === 'DODGE') this.score += this.config.dodgeScore;
-    // Combo: consecutive CATCH or AVOID build it (x1.5 at 5, x2 at 10, applied to those two scores only); a caught bomb, or three gold items missed in a row, ends it.
-    let multiplier = 1;
-    if (outcome === 'CATCH' || (outcome === 'AVOID' && threat)) { this.combo++; multiplier = comboMultiplier(this.combo); }
-    if (outcome === 'CATCH') { this.missStreak = 0; this.score += Math.round((attack.landX !== undefined ? dropPoints(attack.landX) * 10 : this.config.dropScore) * multiplier); }
-    if (outcome === 'AVOID' && threat) this.score += Math.round(this.config.avoidScore * multiplier);
+    // Combo: consecutive CATCH or AVOID build it; a caught pie or a missed ball ends it (GOOD does not). The bonus uses the streak before this catch.
+    const bonusBefore = comboBonus(this.combo);
+    let judgement = null, awarded = 0;
+    if (outcome === 'CATCH' || (outcome === 'AVOID' && threat)) this.combo++;
+    if (outcome === 'CATCH') {
+      this.missStreak = 0;
+      // Same rules with or without a per-shot landing x: without one the lane centre is the ball's spot.
+      const lx = attack.landX !== undefined ? attack.landX : dropTarget(attack.cell - 3);
+      const ratio = point ? Math.abs(point.x - lx) / half : NaN;
+      judgement = judgementFor(ratio) ?? JUDGEMENTS[JUDGEMENTS.length - 1];
+      awarded = Math.max(1, dropPoints(lx) + judgement.adjust) + bonusBefore;
+      this.score += awarded;
+    }
+    if (outcome === 'AVOID' && threat) this.score += this.config.avoidScore;
     if (outcome === 'BOMB') { this.score = Math.max(0, this.score - this.config.bombPenalty); this.combo = 0; this.missStreak = 0; }
     if (outcome === 'MISS' && ++this.missStreak >= MISS_LIMIT) { this.combo = 0; this.missStreak = 0; }
+    let stunStarted = false;
+    if (outcome === 'BOMB' && this.config.stunMs > 0 && atWall >= this.stunReadyAt && point) {
+      this.stunUntil = atWall + this.config.stunMs; this.stunReadyAt = this.stunUntil + this.config.stunCooldown; this.stunPoint = { x:point.x, y:point.y }; stunStarted = true;
+    }
     const result = { eventId:attack.eventId, cell:attack.cell,
       ...(attack.cells ? {kind:attack.kind,cells:[...attack.cells]} : {}), outcome, sampledFrameId:frame?.frameId ?? null,
       sampledAt:atWall, hpDelta:this.hp-hpBefore, scoreDelta:this.score-scoreBefore,
-      ...(attack.kind === 'DROP' ? {sampledX:point ? point.x : null, caught, ...(attack.landX !== undefined ? {landX:attack.landX,points:dropPoints(attack.landX)} : {}), ...(attack.label ? {label:attack.label} : {}), ...(bomb ? {variant:'BOMB'} : {}), combo:this.combo, multiplier} : {}) };
+      ...(attack.kind === 'DROP' ? {sampledX:point ? point.x : null, caught, ...(attack.landX !== undefined ? {landX:attack.landX,points:dropPoints(attack.landX)} : {}), ...(attack.label ? {label:attack.label} : {}), ...(judgement ? {judgement:judgement.id, bonus:bonusBefore} : {}), ...(bomb ? {variant:'BOMB'} : {}), ...(stunned ? {stunned:true} : {}), ...(stunStarted ? {stunStarted:true} : {}), combo:this.combo, comboBonus:comboBonus(this.combo)} : {}) };
     this.recordResult(result);
     if (this.hp === 0) { this.mode='ROUND_END'; this.emit('status',{status:'ROUND_END'}); }
     return result;
@@ -392,9 +421,9 @@ export class MatrixGame {
   }
 
   snapshot() {
-    return { mode:this.mode, connection:this.connection, wallTime:this.wall, gameTime:this.gameTime,
-      hp:this.hp, score:this.score, combo:this.combo, multiplier:comboMultiplier(this.combo), attacks:this.attacks.map(a=>({...a,...(a.cells?{cells:[...a.cells]}:{}),
-        ...(a.kind==='DROP'?{catchHalf:this.config.catchHalf ?? DROP_CATCH_HALF,progress:Math.max(0,Math.min(1,a.due>a.start?(this.gameTime-a.start)/(a.due-a.start):1))}:{})})),
+    return { mode:this.mode, stun:this.stunPoint && this.wall<this.stunUntil ? {until:this.stunUntil,x:this.stunPoint.x,y:this.stunPoint.y} : null, connection:this.connection, wallTime:this.wall, gameTime:this.gameTime,
+      hp:this.hp, score:this.score, combo:this.combo, bonus:comboBonus(this.combo), attacks:this.attacks.map(a=>({...a,...(a.cells?{cells:[...a.cells]}:{}),
+        ...(a.kind==='DROP'?{catchHalf:(this.config.catchHalf ?? DROP_CATCH_HALF)*(a.variant==='BOMB'?this.config.pieReach:1),progress:Math.max(0,Math.min(1,a.due>a.start?(this.gameTime-a.start)/(a.due-a.start):1))}:{})})),
       lastResult:this.results.length ? {...this.results[this.results.length-1],
         ...(this.results.at(-1).cells?{cells:[...this.results.at(-1).cells]}:{})} : null,
       recoveryRemaining:this.mode==='RECOVERING' ? Math.max(0,this.recoveryUntil-this.wall) : 0,freeze:this.freeze.snapshot(),actionGame:this.actionGame.snapshot() };

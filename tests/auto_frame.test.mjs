@@ -6,9 +6,9 @@ const face=(cx=.5,cy=.42,fw=.166)=>({cx,cy,fw});
 
 test('AUTO-01 frames only after the face has been steady for the required frames',()=>{
   const a=new AutoFrame({frames:5});
-  for(let i=0;i<4;i++)assert.equal(a.update(face(),i*33),null);
-  const crop=a.update(face(),4*33);
-  assert.ok(crop);assert.ok(Math.abs(1-crop.left-crop.right-.996)<.001);
+  for(let i=0;i<4;i++)assert.equal(a.update(face(.5,.42,.12),i*33),null);
+  const crop=a.update(face(.5,.42,.12),4*33);
+  assert.ok(crop);assert.ok(Math.abs(1-crop.left-crop.right-.78)<.001);   // 0.12 face width x 6.5 face widths
 });
 
 test('AUTO-02 a missing face restarts the steady count',()=>{
@@ -63,4 +63,27 @@ test('GATE-01 (theme) a crop is held while a shot is on screen, applied once the
   g.offer(b);g.offer(null);assert.equal(g.take(true),null);  // a newer crop replaces; null offers change nothing
   assert.equal(g.take(false),b);assert.equal(g.pending,false);assert.equal(g.take(false),null);          // applied once, only the newest
   g.offer(a);g.clear();assert.equal(g.take(false),null);
+});
+
+test('AUTO-DRIFT a face that settles far from where the crop was built is framed again after the hold time, a game lean never is',()=>{
+  const a=new AutoFrame({frames:3,holdMs:2000});
+  for(let i=0;i<3;i++)a.update(face(.5,.42,.12),i*33);   // framed at the centre
+  assert.equal(a.update(face(.5+.12*1.1,.42,.12),200),null);   // a 1.1 face-width lean: never re-framed
+  assert.equal(a.update(face(.5+.12*1.1,.42,.12),5000),null);
+  assert.equal(a.update(face(.5+.12*3,.42,.12),6000),null);    // 3 face widths away: starts the hold
+  assert.equal(a.update(face(.5+.12*3,.42,.12),7500),null);    // not held long enough
+  const crop=a.update(face(.5+.12*3,.42,.12),8100);
+  assert.ok(crop,'framed again around the new position');
+});
+test('AUTO-LOST after the face was missing for a while the next steady face is framed again',()=>{
+  const a=new AutoFrame({frames:3,lostMs:1500});
+  for(let i=0;i<3;i++)a.update(face(.5,.42,.12),i*33);
+  assert.equal(a.update(null,1000),null);assert.equal(a.update(null,2000),null);
+  assert.equal(a.update(face(.2,.42,.12),3000),null);   // back: counting steady frames again
+  assert.equal(a.update(face(.2,.42,.12),3033),null);
+  const crop=a.update(face(.2,.42,.12),3066);
+  assert.ok(crop);
+  const quick=new AutoFrame({frames:3,lostMs:1500});
+  for(let i=0;i<3;i++)quick.update(face(.5,.42,.12),i*33);
+  quick.update(null,500);assert.equal(quick.update(face(.5,.42,.12),900),null);assert.equal(quick.update(face(.5,.42,.12),933),null);   // a short loss changes nothing
 });

@@ -19,14 +19,14 @@ test('RED-02 a streamer parked in a corner cannot reach a grade by having helper
   assert.equal(gradeFor(farm(4,.05)),null);
   assert.notEqual(gradeFor(farm(8,.05)),'S');
 });
-test('RED-02 a pie that lands where the streamer stands still scores AVOID +10; one far away is AVOID with 0 and no combo',()=>{
+test('RED-02 a pie that lands where the streamer stands is AVOID and counts for the combo; one far away is AVOID with no combo',()=>{
   const run=(x,landX)=>{
     const clock={now:0},game=new MatrixGame({clock:()=>clock.now});game.setConnection(true);game.start();
     game.addFrame({frameId:'f',captureTime:0,nose:{x,y:.5,visibility:1},leftShoulder:null,rightShoulder:null});clock.now=50;game.tick();
     const attack={eventId:'p',cell:4,kind:'DROP',variant:'BOMB',cells:[1,4,7],landX};
     return game.resolve(attack,50);
   };
-  const near=run(.5,.2);assert.equal(near.outcome,'AVOID');assert.equal(near.scoreDelta,10);assert.equal(near.combo,1);
+  const near=run(.5,.2);assert.equal(near.outcome,'AVOID');assert.equal(near.scoreDelta,0);assert.equal(near.combo,1);
   const far=run(.95,.2);assert.equal(far.outcome,'AVOID');assert.equal(far.scoreDelta,0);assert.equal(far.combo,0);
 });
 

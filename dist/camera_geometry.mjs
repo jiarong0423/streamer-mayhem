@@ -20,7 +20,8 @@ export function createCameraGeometry({canvasWidth,canvasHeight,viewport,sourceWi
 // Crop that makes the visible region a window `span` face-widths wide around a detected face (same fraction on both axes, so aspect is kept).
 // The face sits at `faceY` of the window height (below the middle) so there is room above the head for things to fall; it is clamped to the frame.
 // `face` is {cx,cy,fw} normalized to the source frame. Returns null without a usable face.
-export function centerCrop(face,span=6,faceY=.55) {
+export const DEFAULT_SPAN=6.5;   // face widths across the play area. 6 was the original; 7.5 left almost no room to pan, so a face that sits off to one side of the camera could not be centred
+export function centerCrop(face,span=DEFAULT_SPAN,faceY=.55) {
   if(!face || ![face.cx,face.cy,face.fw].every(finite) || !(face.fw>0) || !(span>0) || !(faceY>=0&&faceY<=1))return null;
   const size=Math.min(1,Math.max(.3,face.fw*span)),left=Math.min(1-size,Math.max(0,face.cx-size/2)),top=Math.min(1-size,Math.max(0,face.cy-faceY*size));
   return {left,right:1-size-left,top,bottom:1-size-top};

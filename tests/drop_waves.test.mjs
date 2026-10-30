@@ -81,3 +81,38 @@ test('WAVE-R every generated drop is reachable: lane steps get time, gold and bo
     }
   }
 });
+
+test('TWIN-01 doublePie sends a second pie in another lane with a clear gap left in the middle; with 0 there is never a twin',async()=>{
+  const {safeGapLeft,SAFE_GAP_MIN}=await import('../dist/drop_waves.mjs');
+  assert.equal(safeGapLeft(.33,.67),true);assert.equal(safeGapLeft(.4,.6),false);   // two pies side by side leave nothing to dodge into
+  const landXFor=(c,t)=>[.34,.5+(t%2?.1:-.1),.66][c-1];
+  const run=(doublePie)=>{
+    const w=new DropWaves({seed:11,doublePie,bombStart:1,bombEnd:1,landXFor});const out=[];
+    for(let t=0;t<120000&&out.length<40;t+=100){const d=w.update(t,0);if(d)out.push(d);}
+    return out;
+  };
+  const none=run(0);assert.ok(none.length>5);assert.ok(none.every(d=>!d.twin));
+  const all=run(1);assert.ok(all.length>5);
+  for(const d of all){
+    assert.ok(d.twin,'every pie has a twin');assert.notEqual(d.twin.column,d.column);assert.equal(d.variant,'BOMB');
+    const a=landXFor(d.column,d.tag),b=landXFor(d.twin.column,d.twin.tag);
+    assert.equal(safeGapLeft(a,b),true,`pies at ${a} and ${b} leave a way out`);
+  }
+  assert.throws(()=>new DropWaves({doublePie:2}),RangeError);
+});
+
+test('REACH-WAVE a faster level keeps every pair of balls reachable: the generator checks the shortened landing times',async()=>{
+  const landXFor=(c,t)=>{const base=[.34,.5,.66][c-1];return base+((t%2)?.04:-.04);};
+  for(const speed of [1,1.1,1.2,1.5]){
+    const w=new DropWaves({seed:5,speed,landXFor,bombStart:0,bombEnd:0,maxActive:3});const balls=[];
+    for(let t=0;t<300000;t+=50){const d=w.update(t,0);if(d)balls.push({at:t+d.fall,x:landXFor(d.column,d.tag),fall:d.fall});}
+    assert.ok(balls.length>40);
+    for(let i=0;i<balls.length;i++)for(let j=i+1;j<balls.length;j++){
+      const dt=Math.abs(balls[j].at-balls[i].at),dx=Math.abs(balls[j].x-balls[i].x);
+      if(dt>1000)continue;
+      assert.ok(dt>=dx/w.moveSpeed*1000+w.reactMs-1,`speed ${speed}: balls ${i} and ${j} land ${dt} ms apart ${dx.toFixed(2)} away`);
+    }
+    assert.ok(balls.every(b=>b.fall>=900));
+  }
+  assert.throws(()=>new DropWaves({speed:0}),RangeError);
+});

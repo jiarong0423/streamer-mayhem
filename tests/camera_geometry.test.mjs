@@ -69,18 +69,18 @@ test('cropped or low-confidence nose at impact is unknown without score or damag
   }
 });
 
-test('CENTER-01 centerCrop makes a face-centred window about 6 face widths wide with the aspect kept',async()=>{
+test('CENTER-01 centerCrop makes a face-centred window about 6.5 face widths wide with the aspect kept',async()=>{
   const {centerCrop,createCameraGeometry,projectCameraPoint}=await import('../dist/camera_geometry.mjs');
-  const crop=centerCrop({cx:.5,cy:.6,fw:.12});
+  const crop=centerCrop({cx:.5,cy:.5,fw:.12});
   const size=1-crop.left-crop.right;
-  assert.ok(Math.abs(size-.72)<.001);assert.ok(Math.abs((1-crop.top-crop.bottom)-size)<1e-9);
-  assert.ok(Math.abs(crop.left+size/2-.5)<1e-9);assert.ok(Math.abs(crop.top+size*.55-.6)<1e-9);
+  assert.ok(Math.abs(size-.78)<.001);assert.ok(Math.abs((1-crop.top-crop.bottom)-size)<1e-9);
+  assert.ok(Math.abs(crop.left+size/2-.5)<1e-9);assert.ok(Math.abs(crop.top+size*.55-.5)<1e-9);
   const g=createCameraGeometry({canvasWidth:1280,canvasHeight:720,viewport:{x:0,y:0,width:1280,height:720},sourceWidth:1280,sourceHeight:720,crop});
-  const centre=projectCameraPoint({x:.5,y:.6,visibility:1},g);
+  const centre=projectCameraPoint({x:.5,y:.5,visibility:1},g);
   assert.ok(Math.abs(centre.x-.5)<1e-9&&Math.abs(centre.y-.55)<1e-9);
-  // One face width to the side moves the point by 1/6 of the visible width, i.e. half of a grid column (a column is 1/3).
-  const side=projectCameraPoint({x:.5+.12,y:.6,visibility:1},g);
-  assert.ok(Math.abs(side.x-(.5+1/6))<1e-9);
+  // One face width to the side moves the point by 1/6.5 of the visible width.
+  const side=projectCameraPoint({x:.5+.12,y:.5,visibility:1},g);
+  assert.ok(Math.abs(side.x-(.5+.12/.78))<1e-9);
 });
 test('CENTER-02 centerCrop clamps at the frame edges, enforces a minimum window and rejects bad faces',async()=>{
   const {centerCrop}=await import('../dist/camera_geometry.mjs');

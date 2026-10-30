@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {COLORS,FONT_STACK,easeOutBack,easeOutQuad,easeOutExpo,easeInCubic,strokedText,cachedSprite,setCanvasFactory,clearSpriteCache,spriteCacheSize,bucket,tween,stateFor,
-  drawFeedback,feedbackLabel,feedbackAnchor,shakeOffset,drawLanding,drawOrb,drawBomb,drawHud,drawBanner,drawBackground,drawVignette} from '../dist/art.mjs';
+  drawFeedback,feedbackLabel,feedbackAnchor,shakeOffset,drawLanding,drawOrb,drawBomb,drawStunStars,drawHud,drawBanner,drawBackground,drawVignette} from '../dist/art.mjs';
 import {DROP_FLOOR} from '../dist/drop_lanes.mjs';
 import {drawArena} from '../dist/arena_draw.mjs';
 import {drawCameraOverlay} from '../dist/matrix_view.mjs';
@@ -87,14 +87,14 @@ test('ART-07 bomb: sparks every frame, "!" only once it is close, fuse is drawn'
 
 test('ART-09 labels, colours and default positions of the five feedbacks',()=>{
   const MINUS='−';
-  assert.equal(feedbackLabel({outcome:'CATCH',scoreDelta:50}),'CATCH +50');assert.equal(feedbackLabel({outcome:'BOMB',scoreDelta:-25}),`BOMB ${MINUS}25`);
+  assert.equal(feedbackLabel({outcome:'CATCH',scoreDelta:50}),'CATCH +50');assert.equal(feedbackLabel({outcome:'BOMB',scoreDelta:-25}),`PIE ${MINUS}25`);
   assert.equal(feedbackLabel({outcome:'AVOID',scoreDelta:25}),'AVOID +25');
   assert.equal(feedbackLabel({outcome:'MISS',scoreDelta:0}),'MISS');assert.equal(feedbackLabel({outcome:'HIT',scoreDelta:-15}),'HIT');
   const draw=(outcome,extra={},opts)=>{const f=fake();const info=drawFeedback(f.ctx,rect,{outcome,at:1000,scoreDelta:10,...extra},1400,opts);return {f,info};};
   const colors={CATCH:COLORS.gold,BOMB:COLORS.dangerText,AVOID:COLORS.avoid,MISS:COLORS.gray};
   const spots={};
   for(const [o,c] of Object.entries(colors)){const {info}=draw(o);assert.equal(info.color,c,o);spots[o]=`${Math.round(info.x)},${Math.round(info.y)}`;}
-  assert.equal(new Set(Object.values(spots)).size,3,'positions are not all the same: '+JSON.stringify(spots));
+  assert.equal(new Set(Object.values(spots)).size,4,'positions are not all the same: '+JSON.stringify(spots));   // the PIE label sits above the cream, so BOMB no longer shares MISS's spot
   // explicit event point wins
   const e=draw('AVOID',{x:.25,y:.75}).info;assert.ok(near(e.x,rect.x+.25*rect.width)&&near(e.y,rect.y+.75*rect.height));
   // catch sits above the catcher; bomb at the landing point on the catcher x
@@ -118,7 +118,7 @@ test('ART-11 BOMB: expanding orange blast and a 300ms decaying shake of at most 
   const f=fake();drawFeedback(f.ctx,rect,{outcome:'BOMB',at:0,scoreDelta:-25},175);
   const blast=f.of('arc').find(c=>c.a[2]>0&&c.a[2]<=rect.width/6);assert.ok(blast);
   const f2=fake();drawFeedback(f2.ctx,rect,{outcome:'BOMB',at:0,scoreDelta:-25},349);assert.ok(f2.of('arc').find(c=>c.a[2]>rect.width/6*.99));
-  const f3=fake();drawFeedback(f3.ctx,rect,{outcome:'BOMB',at:0,scoreDelta:-25},1100);assert.equal(f3.of('arc').length,0);   // the cream splat (blobs are arcs) lasts 1000 ms
+  const f3=fake();drawFeedback(f3.ctx,rect,{outcome:'BOMB',at:0,scoreDelta:-25},1400);assert.equal(f3.of('arc').length,0);   // the cream splat (blobs are arcs) lasts 1300 ms
   let peak=0;for(let age=0;age<300;age+=5){const s=shakeOffset(age,rect.width);peak=Math.max(peak,Math.abs(s.x),Math.abs(s.y));assert.ok(Math.abs(s.x)<=rect.width/160+1e-9&&Math.abs(s.y)<=rect.width/160+1e-9);}
   assert.ok(peak>rect.width/160*.3);assert.deepEqual(shakeOffset(300,960),{x:0,y:0,amp:0});assert.equal(shakeOffset(-1,960).amp,0);assert.ok(shakeOffset(250,960).amp<shakeOffset(50,960).amp);
 });
@@ -134,13 +134,13 @@ test('ART-13 vignette: inner .45H, overlay ring .5H, zero strength draws nothing
   drawVignette(ctx,rect,.4,{ring:true});assert.ok(near(g[1][2],540*.5));assert.equal(drawVignette(ctx,rect,0),false);
 });
 
-test('ART-14 HUD draws score and health, and combo / timer / multiplier only when present',()=>{
+test('ART-14 HUD draws score and health, and combo / timer / bonus only when present',()=>{
   const draw=(s,now=0)=>{const f=fake();const r=drawHud(f.ctx,rect,s,now);return {f,r};};
   const base=draw({score:7,hp:80});assert.deepEqual(base.r.drawn,['score','hp']);assert.ok(base.f.of('fillText').some(c=>c.a[0]==='007'));
   assert.equal(drawHud(fake().ctx,rect,null),null);assert.deepEqual(draw({}).r.drawn,[]);
-  const full=draw({score:120,hp:100,combo:5,multiplier:2,roundLeftMs:42000});
-  assert.deepEqual(full.r.drawn,['timer','score','hp','combo','multiplier']);const texts=full.f.of('fillText').map(c=>c.a[0]);
-  assert.ok(texts.includes('0:42')&&texts.includes('120')&&texts.includes('×5')&&texts.includes('SCORE ×2'));
+  const full=draw({score:120,hp:100,combo:5,bonus:2,roundLeftMs:42000});
+  assert.deepEqual(full.r.drawn,['timer','score','hp','combo','bonus']);const texts=full.f.of('fillText').map(c=>c.a[0]);
+  assert.ok(texts.includes('0:42')&&texts.includes('120')&&texts.includes('×5')&&texts.includes('BONUS +2'));
   assert.ok(!draw({score:1,hp:50,combo:2}).r.drawn.includes('combo'));
   const lowTime=draw({roundLeftMs:9000},0).f.of('fillText')[0];assert.equal(lowTime.fill,COLORS.dangerText);assert.equal(draw({roundLeftMs:30000}).f.of('fillText')[0].fill,COLORS.paper);
   const hpColor=hp=>{const f=fake().of?draw({score:0,hp}):null;return f.f.of('fill').filter(c=>c.fill==='#FF6B4A'||c.fill===COLORS.lime).length&&f.f.of('fill').at(-1).fill;};
@@ -230,7 +230,7 @@ test('ART-21 catcher ring grows toward 1.35x with easeOutBack, never instantly',
 
 test('ART-22 overlay path: drawCameraOverlay takes an optional now and keeps its old call shape',()=>{
   setCanvasFactory(()=>null);const g=geometry();
-  for(const opts of [{clear:false},{clear:false,now:1234}]){const f=fake();drawCameraOverlay(f.ctx,g,{mode:'PLAYING',attacks:[{cell:5,kind:'DROP',cells:[2,5,8],progress:.9,variant:'BOMB'}]},opts);assert.ok(f.of('arc').length>5);}
+  for(const opts of [{clear:false},{clear:false,now:1234}]){const f=fake();drawCameraOverlay(f.ctx,g,{mode:'PLAYING',attacks:[{cell:5,kind:'DROP',cells:[2,5,8],progress:.9,variant:'BOMB'}]},opts);assert.ok(f.of('arc').length+f.of('ellipse').length+f.of('quadraticCurveTo').length>5);}
 });
 
 test('ART-T1 (theme) a three-pointer is a differently coloured ball: its own cached sprite and violet, the two-pointer stays orange',()=>{
@@ -241,4 +241,20 @@ test('ART-T1 (theme) a three-pointer is a differently coloured ball: its own cac
   const colors=f=>f.calls.map(c=>JSON.stringify(c)).join('');
   assert.ok(/255,140,40/.test(colors(two))&&!/160,110,255/.test(colors(two)),'two-pointer is orange');
   assert.ok(/160,110,255/.test(colors(thr))&&!/rgba\(255,140,40,\.0/.test(colors(thr)),'three-pointer is violet');
+});
+
+test('ART-FACE a pie effect lands on the live face even when the effect carries a floor spot, and falls back to that spot without a face',()=>{
+  const effect={outcome:'BOMB',at:0,scoreDelta:-25,x:.5,y:.93};
+  const onFace=feedbackAnchor(effect,rect,{catcherX:.5,faceX:.3,faceY:.4});
+  assert.ok(Math.abs(onFace.x-(rect.x+.3*rect.width))<1e-9&&Math.abs(onFace.y-(rect.y+.4*rect.height))<1e-9);
+  const noFace=feedbackAnchor(effect,rect,{catcherX:.5});
+  assert.ok(Math.abs(noFace.x-(rect.x+.5*rect.width))<1e-9&&Math.abs(noFace.y-(rect.y+.93*rect.height))<1e-9);
+});
+
+test('ART-STUN dizzy stars draw three stars; the pie cream lasts 1300 ms while other labels stay at 1000 ms',()=>{
+  const f=fake();drawStunStars(f.ctx,200,200,12,500);
+  assert.equal(f.of('fill').length,3);
+  assert.notEqual(drawFeedback(fake().ctx,rect,{outcome:'BOMB',at:0,scoreDelta:-25},1200),null);
+  assert.equal(drawFeedback(fake().ctx,rect,{outcome:'BOMB',at:0,scoreDelta:-25},1300),null);
+  assert.equal(drawFeedback(fake().ctx,rect,{outcome:'CATCH',at:0,scoreDelta:20},1200),null);
 });

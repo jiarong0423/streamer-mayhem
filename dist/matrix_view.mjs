@@ -1,6 +1,6 @@
 // Pure geometry and Canvas drawing; this module does not access a camera or network.
 import {dropTarget,dropY,DROP_FLOOR,DROP_CATCH_HALF,dropPoints,shotArc} from './drop_lanes.mjs';
-import {drawGuide,drawLanding,drawOrb,drawBomb,THREE_BALL_COLOR,STAR_BALL_COLOR} from './art.mjs';
+import {drawGuide,drawLanding,drawOrb,drawBomb,drawPie,THREE_BALL_COLOR,STAR_BALL_COLOR} from './art.mjs';
 export function containRect(viewWidth, viewHeight, sourceWidth, sourceHeight) {
   if (![viewWidth,viewHeight,sourceWidth,sourceHeight].every(n=>Number.isFinite(n) && n>0)) throw new RangeError('Invalid dimensions');
   const scale=Math.min(viewWidth/sourceWidth,viewHeight/sourceHeight);
@@ -98,8 +98,13 @@ export function drawCameraOverlay(ctx,geometry,snapshot,{clear=true,grid=false,n
         if(p>=PIE_AT){
           // The pie is thrown straight at the camera: it starts small at the target column at face height and grows fast (ease-in) until it fills the view at impact (p=1).
           const q=Math.min(1,(p-PIE_AT)/(1-PIE_AT)),faceY=face&&Number.isFinite(face.y)?Math.max(rect.y,Math.min(face.y,floor)):rect.y+rect.height*.6;
-          const pr=radius*(.5+4.2*q*q*q),wobble=Math.sin(q*9)*radius*.25*(1-q);
-          ctx.save();ctx.translate(cx+wobble,faceY);ctx.rotate(q*(target<.5?-2.2:2.2));ctx.globalAlpha=.55+.45*q;drawBomb(ctx,0,0,pr,now,p);ctx.restore();
+          // A lob towards the camera: it starts small and high above the face, falls and swells quickly, and leaves a trail of fading earlier positions (consecutive frames) so it reads as thrown.
+          const aimX=face&&Number.isFinite(face.x)&&Math.abs(face.x-cx)<=ringHalf?face.x:cx;   // a pie that will hit flies at the face, one that will miss flies down its lane
+          const at=qq=>({x:aimX+Math.sin(qq*9)*radius*.25*(1-qq),y:faceY-rect.height*.32*(1-qq)*(1-qq),r:radius*(.5+4.2*qq*qq*qq),rot:Math.sin(qq*7)*.14*(1-qq)});
+          for(let k=4;k>=0;k--){
+            const qq=q-.06*k;if(qq<0)continue;
+            const f=at(qq);ctx.save();ctx.translate(f.x,f.y);ctx.rotate(f.rot);ctx.globalAlpha=k?.1*(5-k)*(.4+.6*q):.55+.45*q;drawPie(ctx,0,0,f.r,now);ctx.restore();
+          }
         }
         continue;
       }

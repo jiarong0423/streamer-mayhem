@@ -146,6 +146,7 @@ export function createSfx({ ctxFactory = defaultFactory, storage = null, keepAli
   RECIPES.swish = (b) => { b.burst({ dur: 0.3, a: 0.03, peak: -24, filter: { type: 'highpass', freq: 5200, freq1: 2400 } }); b.tone({ type: 'sine', f0: 1400, f1: 900, dur: 0.12, a: 0.004, peak: -30 }); };
   RECIPES.rim = (b) => { b.tone({ type: 'triangle', f0: 520, dur: 0.2, a: 0.001, peak: -16 }); b.tone({ type: 'triangle', f0: 790, dur: 0.16, a: 0.001, peak: -18 }); b.burst({ dur: 0.05, a: 0.001, peak: -22, filter: { type: 'bandpass', freq: 2600, q: 2 } }); };
   RECIPES.splat = (b) => { b.burst({ dur: 0.26, a: 0.003, peak: -12, filter: { type: 'lowpass', freq: 1800, freq1: 280 } }); b.tone({ type: 'sine', f0: 170, f1: 70, dur: 0.2, a: 0.003, peak: -13 }); };
+  RECIPES.boing = (b) => { b.tone({ type: 'sine', f0: 180, f1: 560, dur: 0.16, a: 0.004, peak: -12 }); b.tone({ type: 'sine', f0: 560, f1: 130, at: 0.16, dur: 0.4, a: 0.004, peak: -13 }); b.tone({ type: 'triangle', f0: 1100, f1: 320, at: 0.1, dur: 0.45, a: 0.01, peak: -24 }); };
   RECIPES.shoot = (b) => { b.burst({ dur: 0.38, a: 0.12, peak: -28, filter: { type: 'bandpass', freq: 500, freq1: 1900, q: 0.9 } }); };
   RECIPES.hit = (b) => RECIPES.bomb(b, { short: true });
   RECIPES.dodge = RECIPES.avoid;

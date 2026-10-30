@@ -43,7 +43,7 @@ export function dropLandX(column,eventId,jitter){
 //   (1 = at the edge), startY = release height, apex = highest point. Not a lob: it peaks in the upper-middle of the window, never near the top.
 // Two-pointer (middle lane): drops from above the window with a little sideways drift (drift = start x offset, in window widths; startY above the top).
 export const ARC_RANGES=Object.freeze({
-  three:Object.freeze({reach:[1.00,1.04],startY:[.60,.70],apex:[.36,.46]}),
+  three:Object.freeze({reach:[.98,1.10],startY:[.56,.78],apex:[.26,.48]}),   // wide ranges on purpose: every three-pointer flies its own arc
   two:Object.freeze({drift:[.02,.06],startY:[-.15,-.08]})
 });
 export function shotArc(eventId,points){

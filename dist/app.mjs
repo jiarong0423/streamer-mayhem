@@ -11,6 +11,7 @@ import { CameraTracker, PointStabilizer } from './camera_tracker.mjs';
 import { drawArena } from './arena_draw.mjs';
 import { createTicker, speakableName, cleanName, chatPointsFor } from './ticker.mjs';
 import {AutoFrame,createCropGate} from './auto_frame.mjs';
+import {LEVELS,LEVEL_ORDER,DEFAULT_LEVEL,stepPicker,NodDetector,applyLevel,applyWaves,scaleFall,drawPicker} from './difficulty.mjs';
 import {dropColumn,dropTarget,dropLandX,DROP_FLOOR} from './drop_lanes.mjs';
 import {CatchBurst,loadSprites} from './catch_fx.mjs';
 import {DropWaves} from './drop_waves.mjs';
@@ -37,6 +38,7 @@ const player={x:.5,y:.5};
 const poseControls={spread:.1,hip:.5,leftWrist:{x:.25,y:.55},rightWrist:{x:.75,y:.55}};
 const challengeNames={DROP:'Catch the drop',CROSS:'Cross Inferno',FREEZE:'Freeze',LAVA:'Lava'};
 let cameraGeometry=createCameraGeometry({canvasWidth:canvas.width,canvasHeight:canvas.height,viewport:{x:0,y:0,width:canvas.width,height:canvas.height},sourceWidth:1280,sourceHeight:720});
+let reduceFx=false,hitStopUntil=0;try{reduceFx=localStorage.getItem('sm.reduceFx')==='1';}catch{/* storage may be blocked */}
 let eventId=0,tracking=true,lastEffect=null,animationId=0,mockMode=false,chatMode=false,providerActivation=null,configuredProvider=null,ircChat=null,cameraTracker=null,cameraOn=false,cameraMirror=true,cameraKindLabel='CAMERA FACE TRACKING',savedGeometry=null;
 let lastOverlayUpdate=0,roundLeftNow;
 const modeNames={IDLE:'Ready',PLAYING:'Playing',PAUSED:'Paused',TRACKING_LOST:'Tracking lost',RECOVERING:'Getting ready',ROUND_END:'Round over'};
@@ -105,12 +107,15 @@ function playVoice(points){
 const seedParam=Number(new URLSearchParams(location.search).get('seed'));
 // Theme pacing: a slow base fall (2.2-3.8 s) made faster by a random factor of 1.1-1.5 per shot (continuous, so speeds are very varied), shrinking a little over the
 // round but never faster than 1.5 s (the speed ceiling); gaps never shorter than 0.55 s; at most three shots on screen.
-const waves=new DropWaves({seed:Number.isInteger(seedParam)&&seedParam>0?seedParam:(Date.now()&0x7fffffff)||1,maxActive:3,fallMin:2200,fallMax:3800,fallFloor:1500,speedFactor:[1.1,1.5],gapMin:550,gapMax:2400,gapBase:800,gapMean:1000,gapFloor:550,laneStepMs:450,bombStart:.12,bombEnd:.22,columnWeights:[.06,.88,.06],maxSame:4,landXFor:(column,tag)=>dropLandX(column,`wave-${waveSerial+1}-${tag}`,.12)});let waveSerial=0,roundEnding=false,banner=null;
+const waves=new DropWaves({seed:Number.isInteger(seedParam)&&seedParam>0?seedParam:(Date.now()&0x7fffffff)||1,maxActive:3,fallMin:2200,fallMax:3800,fallFloor:1500,speedFactor:[1.1,1.5],gapMin:550,gapMax:2400,gapBase:800,gapMean:1000,gapFloor:550,laneStepMs:450,bombStart:.24,bombEnd:.38,columnWeights:[.06,.88,.06],maxSame:4,landXFor:(column,tag)=>dropLandX(column,`wave-${waveSerial+1}-${tag}`,.12)});let waveSerial=0,roundEnding=false,banner=null;
 const autoDrops=document.querySelector('#auto-drops');
 autoDrops.addEventListener('change',()=>{waves.reset(performance.now());roundEnding=false;banner=null;if(autoDrops.checked)sfx.play('roundStart');if(!autoDrops.checked&&session.phase==='running')session.phase='over';syncStart();feed(autoDrops.checked?'Auto drops on':'Auto drops off',autoDrops.checked?'Random balls and pies, rising difficulty':'Only chat starts drops');});
 const catchFx=new CatchBurst({count:24});let fxSprites={},lastMarker=null;
 loadSprites().then(sprites=>{fxSprites=sprites;});
+const debugLog=pageParams.get('debug')==='1'?(window.__evLog=[]):null;   // ?debug=1 only: engine events and frame-loop stalls, read back from the console or over CDP
+const logEvent=(...row)=>{if(debugLog){debugLog.push([Math.round(performance.now()),...row]);if(debugLog.length>600)debugLog.shift();}};
 const game=new MatrixGame({onEvent:event=>{
+  logEvent(event.type,event.status??event.outcome??'',event.reason??'');
   if(event.type==='result'){
     if(event.outcome==='CATCH'&&cameraGeometry){
       // Burst where the item was caught: at its target x on the floor line.
@@ -119,16 +124,17 @@ const game=new MatrixGame({onEvent:event=>{
     }
     // x,y (window coordinates, 0..1) say where the effect belongs: the floor spot of a drop.
     const spot=event.kind==='DROP'?{x:Number.isFinite(event.landX)?event.landX:(dropTarget(event.cells?.[0]??event.cell-3)??.5),y:DROP_FLOOR}:{};
-    lastEffect={outcome:event.outcome,at:performance.now(),scoreDelta:event.scoreDelta??0,...(Number.isFinite(event.combo)?{combo:event.combo}:{}),...(Number.isFinite(event.points)?{points:event.points}:{}),...spot};
+    if(event.outcome==='BOMB'&&!reduceFx)hitStopUntil=performance.now()+80;   // a short freeze on a pie hit
+    lastEffect={outcome:event.outcome,at:performance.now(),scoreDelta:event.scoreDelta??0,...(Number.isFinite(event.combo)?{combo:event.combo}:{}),...(Number.isFinite(event.points)?{points:event.points}:{}),...(event.judgement?{judgement:event.judgement}:{}),...spot};
     ticker.noteResult(event,performance.now());if(event.kind==='DROP')chatScore+=chatPointsFor(event.outcome);
-    const sound=OUTCOME_SOUND[event.outcome];if(sound)sfx.play(sound,{combo:event.combo});if(event.outcome==='CATCH'){sfx.play('swish');if(event.label)thankSupporter(event.label);else playVoice(event.points);}
+    const sound=OUTCOME_SOUND[event.outcome];if(sound)sfx.play(sound,{combo:event.combo});if(event.stunStarted)sfx.play('boing',{skipDedupe:true});if(event.outcome==='CATCH'){sfx.play('swish');if(event.label)thankSupporter(event.label);else playVoice(event.points);}
     const titles={HIT:'Ouch, hit!',DODGE:'Nice dodge',CATCH:'Caught it!',MISS:'Missed it',BOMB:'Splat! Pie caught',AVOID:'Pie dodged'};
     feed(titles[event.outcome]??'Undetermined',`${challengeNames[event.kind]??`Target cell ${event.cell}`} · ${event.outcome}`);
   } else if(event.type==='lavaBurn')feed('Lava burn',`HP ${event.hpDelta} · stand to avoid the lava`);
   else if(event.type==='ringOut')feed('Character left the arena','Out of bounds');
-},options:{landJitter:.12,avoidScore:0,chatThrow:false,chatPieGap:4500,pieFall:1700}});   // theme: dodging a pie scores nothing (a dodge is just not being hit)
+},options:{landJitter:.12,avoidScore:0,chatThrow:false,chatPieGap:4500,pieFall:1700,staleGrace:1500,stunMs:1000,pieReach:1.3}});   // theme: dodging a pie scores nothing (a dodge is just not being hit)
 const stabilizer=new PointStabilizer();
-const frameSource=new SyntheticFrameSource({game,maxAge:game.config.maxAge,project:frame=>{
+const frameSource=new SyntheticFrameSource({game,maxAge:game.config.maxAge+game.config.staleGrace,project:frame=>{
   const out=cameraGeometry?projectCameraFrame(frame,cameraGeometry):{...frame,nose:null,leftShoulder:null,rightShoulder:null};
   if(cameraOn&&out&&Object.hasOwn(out,'torso'))out.torso=stabilizer.update(out.torso);
   return out;
@@ -232,7 +238,7 @@ function updateScreen(snapshot){
 }
 
 // Camera tracking: the page shows the mirrored camera image under the play area; poses come from the in-browser model.
-// "Center me": the play area covers a window about six face widths wide around the seated streamer instead of the whole camera frame,
+// "Center me": the play area covers a window about six and a half face widths wide around the seated streamer instead of the whole camera frame,
 // so leaning one face width changes the column. Same fraction on both axes keeps the 16:9 aspect (a digital zoom).
 const NO_CROP=Object.freeze({left:0,right:0,top:0,bottom:0});
 let cameraCrop=NO_CROP;
@@ -273,7 +279,7 @@ function pollCamera(){
   if(cameraTracker.kind==='face'&&$('#camera-auto').checked){
     cropGate.offer(autoFrame.update(cameraTracker.lastFace,performance.now()));
     const crop=cropGate.take(game.attacks.length>0);   // never re-frame under a falling ball: that would clear it
-    if(crop){setCameraCrop(crop);$('#camera-status').textContent='Auto-framed: the play area now covers about six face widths around you, with room above your head; lean a little to change column.';}
+    if(crop){setCameraCrop(crop);$('#camera-status').textContent='Auto-framed: the play area now covers about six and a half face widths around you, with room above your head; lean a little to change column.';}
   }
   // A tilted head can drop the face for a few frames; keep the last position for a short grace period instead of declaring tracking lost.
   if(result.points){lastGood={points:result.points,at:performance.now()};frameSource.capture(result.points);}
@@ -324,7 +330,7 @@ $('#camera-center').addEventListener('click',()=>{
   if(!cameraTracker)return;
   const crop=cameraTracker.kind==='face'?centerCrop(cameraTracker.lastFace):null;
   if(!crop){$('#camera-status').textContent='No face found yet. Sit in view, then try again.';return;}
-  setCameraCrop(crop);autoFrame.adopt(cameraTracker.lastFace);$('#camera-status').textContent='Centered. The play area now covers about six face widths around you, with room above your head; lean a little to change column.';
+  setCameraCrop(crop);autoFrame.adopt(cameraTracker.lastFace);$('#camera-status').textContent='Centered. The play area now covers about six and a half face widths around you, with room above your head; lean a little to change column.';
 });
 // Mirror can be flipped while the camera runs; the play area, lanes and backdrop are rebuilt for the new orientation.
 $('#camera-mirror').addEventListener('change',()=>{cameraMirror=$('#camera-mirror').checked;if(cameraOn)setCameraCrop(cameraCrop);});
@@ -369,13 +375,16 @@ function showObsSetup(){
   const text=setup?setup.text:'OBS camera source setup appears here once the camera is on.';
   if(text!==obsSetupText){obsSetupText=text;$('#obs-align').textContent=text;}
 }
+let lastLoopAt=0;
 function loopBody(){
+  {const t=performance.now();if(debugLog&&lastLoopAt&&t-lastLoopAt>120)logEvent('loop-gap',Math.round(t-lastLoopAt));lastLoopAt=t;}
+  if(!reduceFx&&performance.now()<hitStopUntil)return;   // hit-stop: keep the last picture for about 80 ms
   const now=performance.now();if(cameraOn)pollCamera();else addSyntheticFrame();let snapshot=game.tick();
   // Automatic waves (local game logic): irregular balls and pies while the round is playing and the box is ticked.
   // A round is 75 s: after that no new drops start, and when the last one has landed the round ends with a summary banner.
   if(autoDrops.checked&&waves.difficulty(now)>=1)roundEnding=true;
   if(roundEnding&&(snapshot.attacks.length===0||now>waves.startedAt+waves.roundMs+8000)){
-    roundEnding=false;autoDrops.checked=false;const grade=gradeFor(snapshot.score);
+    roundEnding=false;autoDrops.checked=false;const grade=gradeFor(snapshot.score,playLevel.grades);
     banner={text:`ROUND OVER · SCORE ${snapshot.score}${snapshot.score>chatScore?' · STREAMER WINS':snapshot.score<chatScore?' · CHAT WINS':''}`,at:now,grade};feed('Round over',`Score ${snapshot.score}${grade?` · grade ${grade}`:''} · ${snapshot.score>chatScore?'streamer wins':snapshot.score<chatScore?'chat wins':'a draw'} (${snapshot.score}–${chatScore})`);
     sfx.play('roundEnd');if(session.phase==='running')session.phase='over';syncStart();
   }
@@ -383,12 +392,15 @@ function loopBody(){
   updateSound(snapshot);stepSession(now);
   if(autoDrops.checked&&!roundEnding&&snapshot.mode==='PLAYING'&&(game.connection==='ONLINE'||(ircChat&&ircChat.status!=='STOPPED'))){
     const next=waves.update(now,snapshot.attacks.length);
-    if(next){const id=`wave-${++waveSerial}-${next.tag??0}`;game.receiveWaveDrop({notificationId:id,messageId:id,actorId:id,receivedAt:performance.now()},next);snapshot=game.tick();}
+    if(next){const id=`wave-${++waveSerial}-${next.tag??0}`;game.receiveWaveDrop({notificationId:id,messageId:id,actorId:id,receivedAt:performance.now()},next);
+      if(next.twin){const tid=`wave-${waveSerial}-${next.twin.tag??0}`;game.receiveWaveDrop({notificationId:tid,messageId:tid,actorId:tid,receivedAt:performance.now()},{column:next.twin.column,variant:'BOMB',fall:next.twin.fall,...(next.twin.tag!==undefined?{tag:next.twin.tag}:{})});}   // a twin pie shares the serial so its landing spot matches what the generator checked
+      snapshot=game.tick();}
   }
   const last=frameSource.lastFrame,anchor=cameraOn?(last?.torso??last?.nose??null):(last?.nose??null);
   const roundLeftMs=autoDrops.checked&&!roundEnding?Math.max(0,Math.round(waves.roundMs-(now-waves.startedAt))):undefined;roundLeftNow=roundLeftMs;
   const drawn=drawArena(ctx,{...snapshot,roundLeftMs},anchor,{now,lastEffect,banner,showMarker:false,tracking:frameSource.running&&Boolean(anchor),geometry:cameraGeometry,
-    backdrop:cameraOn?drawCameraBackdrop:null,marker:cameraOn,ticker:{entries:ticker.live(now),versus:{streamer:snapshot.score??0,chat:chatScore}}});lastMarker=drawn?.position??null;
+    backdrop:cameraOn?drawCameraBackdrop:null,marker:cameraOn,calm:reduceFx,facePlayer:last?.nose??null,ticker:{entries:ticker.live(now),versus:{streamer:snapshot.score??0,chat:chatScore}}});lastMarker=drawn?.position??null;
+  if(session.phase==='choose'&&cameraGeometry)drawPicker(ctx,cameraGeometry.visible,picker?.state);
   catchFx.draw(ctx,now,fxSprites,cameraGeometry?.visible??null);updateDebug(now,snapshot);updateScreen(snapshot);
   if(now-lastOverlayUpdate>=100){lastOverlayUpdate=now;publishOverlay(snapshot);showObsSetup();}
 }
@@ -396,10 +408,11 @@ function loopBody(){
 // One-click start: camera on (face mode, mirrored, auto-framed) -> 3-2-1 -> auto drops. The same button (or Esc) stops everything and turns the camera off.
 // phases: idle -> starting (camera opening) -> countdown -> running -> over (round finished; the button offers Play again) -> idle
 const session={phase:'idle',token:0,countdownAt:0,shown:null};
-const START_LABELS={idle:'Start playing',starting:'Starting camera… (click to cancel)',countdown:'Get ready… (click or Esc to stop)',running:'Stop playing (Esc)',over:'Play again'};
+let playLevel=LEVELS[DEFAULT_LEVEL],picker=null;const nod=new NodDetector();   // difficulty: chosen with the head (or keys 1, 2, 3) before the countdown; see difficulty.mjs
+const START_LABELS={idle:'Start playing',starting:'Starting camera… (click to cancel)',choose:'Pick a level with your head… (click or Esc to stop)',countdown:'Get ready… (click or Esc to stop)',running:'Stop playing (Esc)',over:'Play again'};
 function syncStart(){
   const button=$('#start-playing');if(!button)return;
-  button.textContent=START_LABELS[session.phase];button.dataset.phase=session.phase;button.setAttribute('aria-pressed',String(session.phase==='running'||session.phase==='countdown'));
+  button.textContent=START_LABELS[session.phase];button.dataset.phase=session.phase;button.setAttribute('aria-pressed',String(session.phase==='running'||session.phase==='countdown'||session.phase==='choose'));
 }
 function startMessage(text){const el=$('#start-status');if(el)el.textContent=text;}
 async function startPlaying(){
@@ -415,16 +428,29 @@ async function startPlaying(){
     }
   }
   $('#reset').click();                                                              // a clean round: score, combo and HP back to the start
-  session.phase='countdown';session.countdownAt=performance.now();session.shown=null;syncStart();startMessage('Stand where the camera sees your face.');
+  if(cameraOn&&cameraGeometry){session.phase='choose';picker={state:null};nod.reset();session.shown=null;syncStart();startMessage('Tilt your head to EASY, NORMAL or HARD, then nod to confirm. Keys 1, 2, 3 also work. No time limit.');}
+  else beginCountdown(LEVELS[DEFAULT_LEVEL]);
+}
+function beginCountdown(level){
+  playLevel=applyLevel(game,level);applyWaves(waves,playLevel);picker=null;
+  session.phase='countdown';session.countdownAt=performance.now();session.shown=null;syncStart();startMessage(`${playLevel.label}: stand where the camera sees your face.`);
 }
 async function stopPlaying(){
-  session.token++;session.phase='idle';session.shown=null;
+  session.token++;session.phase='idle';session.shown=null;picker=null;
   autoDrops.checked=false;autoDrops.dispatchEvent(new Event('change'));banner=null;
   if(cameraOn||cameraTracker)await toggleCamera();
   syncStart();startMessage('Stopped. Press Start playing to go again.');
 }
 // Driven from the frame loop so Esc/stop can never leave a timer behind.
 function stepSession(now){
+  if(session.phase==='choose'){
+    const f=frameSource.lastFrame?.nose,p=f&&cameraGeometry?projectCameraPoint({...f,visibility:1},cameraGeometry):null;
+    if(picker)picker.state=stepPicker(picker.state,p?p.x:NaN);
+    const nodded=nod.update(p?p.y:NaN,now,p?p.x:NaN);
+    if(pageParams.get('debug')==='1'){const log=(window.__pickLog??=[]);log.push([Math.round(now),p?+p.x.toFixed(3):null,p?+p.y.toFixed(3):null,picker?.state?.zone??null,nodded?1:0]);if(log.length>900)log.shift();}   // ?debug=1 only: what the picker sees
+    if(nodded&&picker?.state?.zone)beginCountdown(LEVELS[picker.state.zone]);   // a nod confirms the level the head is leaning into
+    return;
+  }
   if(session.phase!=='countdown')return;
   const left=3-Math.floor((now-session.countdownAt)/1000);
   if(left>=1){if(session.shown!==left){session.shown=left;banner={text:String(left),at:now,big:true};sfx.play('tick',{freq:1200,skipDedupe:true});}return;}
@@ -436,7 +462,11 @@ $('#start-playing').addEventListener('click',()=>{
   if(sfx.enabled&&!sfx.unlocked)sfx.unlock();                                       // a remembered "sound on" needs one click per page load
   if(session.phase==='idle'||session.phase==='over')startPlaying();else stopPlaying();
 });
-document.addEventListener('keydown',event=>{if(event.key==='Escape'&&session.phase!=='idle'){event.preventDefault();stopPlaying();}});
+document.addEventListener('keydown',event=>{
+  if(event.key==='Escape'&&session.phase!=='idle'){event.preventDefault();stopPlaying();return;}
+  if(session.phase==='choose'&&['1','2','3'].includes(event.key)){event.preventDefault();beginCountdown(LEVELS[LEVEL_ORDER[Number(event.key)-1]]);}
+  else if(session.phase==='choose'&&event.key==='Enter'&&picker?.state?.zone){event.preventDefault();beginCountdown(LEVELS[picker.state.zone]);}
+});
 // Sound button: off by default; a click turns it on and unlocks the audio context (browsers require this), another click mutes it.
 function syncSound(failed=false){
   const button=$('#sound-toggle'),slider=$('#sound-volume');if(!button)return;
@@ -662,3 +692,5 @@ setInterval(()=>{if(document.hidden&&hiddenSnapshot)publishOverlay(hiddenSnapsho
 window.addEventListener('pagehide',()=>{stopOverlaySync();overlay.remember();cancelAnimationFrame(animationId);transport.stop();chatTransport.stop();cameraTracker?.stop();popupController?.dispose();providerActivation?.stop();ircChat?.stop();oauth.clear();});
 
 syncProviderControls();game.start();addSyntheticFrame();game.tick();adapter.ingest(syntheticWelcome());if(overlay.auto())startOverlaySync();animationId=requestAnimationFrame(loop);
+
+{const box=document.querySelector('#reduce-fx');if(box){box.checked=reduceFx;box.addEventListener('change',()=>{reduceFx=box.checked;try{localStorage.setItem('sm.reduceFx',reduceFx?'1':'0');}catch{/* storage may be blocked */}});}}

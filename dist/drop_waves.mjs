@@ -5,10 +5,18 @@ const finite=Number.isFinite;
 
 function rng(seed){let x=(seed>>>0)||1;return()=>{x^=x<<13;x>>>=0;x^=x>>>17;x^=x<<5;x>>>=0;return x/4294967296;};}
 
+// Width of the clear space left in the middle of the picture (0.3..0.7, where a seated player can move) when two pies, each with a danger zone of +-0.1, land at a and b.
+export const SAFE_GAP_MIN=.12,MIN_FALL_MS=900;
+export function safeGapLeft(a,b,half=.1,lo=.3,hi=.7){
+  const iv=[[a-half,a+half],[b-half,b+half]].map(([l,r])=>[Math.max(lo,l),Math.min(hi,r)]).filter(([l,r])=>r>l).sort((p,q)=>p[0]-q[0]);
+  let covered=0,end=-Infinity;
+  for(const [l,r] of iv){const from=Math.max(l,end);if(r>from)covered+=r-from;end=Math.max(end,r);}
+  return (hi-lo)-covered>=SAFE_GAP_MIN;
+}
 export class DropWaves {
-  constructor({seed=1,maxActive=3,roundMs=75000,gapMin=500,gapMax=2200,gapBase=700,gapMean=900,fallMin=1600,fallMax=2800,bombStart=.12,bombEnd=.28,gapFloor=450,fallFloor=1300,laneStepMs=350,mixedLaneMs=450,columnWeights=null,maxSame=2,speedFactor=null,landXFor=null,moveSpeed=.30,reactMs=250,minShift=.13}={}) {
-    if(!Number.isInteger(maxActive)||maxActive<1||maxActive>8||!(roundMs>0)||!(gapMin>0&&gapMax>=gapMin)||!(fallMin>0&&fallMax>=fallMin)||!(bombStart>=0&&bombEnd<=1&&bombEnd>=bombStart)||(columnWeights!==null&&(!Array.isArray(columnWeights)||columnWeights.length!==3||columnWeights.some(v=>!(v>=0))||!(columnWeights[0]+columnWeights[1]+columnWeights[2]>0)))||!Number.isInteger(maxSame)||maxSame<1||(landXFor!==null&&typeof landXFor!=='function')||!(moveSpeed>0)||!(reactMs>=0)||!(minShift>=0&&minShift<1)||(speedFactor!==null&&(!Array.isArray(speedFactor)||speedFactor.length!==2||!(speedFactor[0]>0)||!(speedFactor[1]>=speedFactor[0])||!finite(speedFactor[1]))))throw new RangeError('INVALID_WAVES');
-    Object.assign(this,{seed,maxActive,roundMs,gapMin,gapMax,gapBase,gapMean,fallMin,fallMax,bombStart,bombEnd,gapFloor,fallFloor,laneStepMs,mixedLaneMs,columnWeights,maxSame,speedFactor,landXFor,moveSpeed,reactMs,minShift});this.reset(0);
+  constructor({seed=1,maxActive=3,roundMs=75000,gapMin=500,gapMax=2200,gapBase=700,gapMean=900,fallMin=1600,fallMax=2800,bombStart=.12,bombEnd=.28,doublePie=0,speed=1,gapFloor=450,fallFloor=1300,laneStepMs=350,mixedLaneMs=450,columnWeights=null,maxSame=2,speedFactor=null,landXFor=null,moveSpeed=.30,reactMs=250,minShift=.13}={}) {
+    if(!Number.isInteger(maxActive)||maxActive<1||maxActive>8||!(roundMs>0)||!(gapMin>0&&gapMax>=gapMin)||!(fallMin>0&&fallMax>=fallMin)||!(bombStart>=0&&bombEnd<=1&&bombEnd>=bombStart)||!(doublePie>=0&&doublePie<=1)||!(speed>0)||(columnWeights!==null&&(!Array.isArray(columnWeights)||columnWeights.length!==3||columnWeights.some(v=>!(v>=0))||!(columnWeights[0]+columnWeights[1]+columnWeights[2]>0)))||!Number.isInteger(maxSame)||maxSame<1||(landXFor!==null&&typeof landXFor!=='function')||!(moveSpeed>0)||!(reactMs>=0)||!(minShift>=0&&minShift<1)||(speedFactor!==null&&(!Array.isArray(speedFactor)||speedFactor.length!==2||!(speedFactor[0]>0)||!(speedFactor[1]>=speedFactor[0])||!finite(speedFactor[1]))))throw new RangeError('INVALID_WAVES');
+    Object.assign(this,{seed,maxActive,roundMs,gapMin,gapMax,gapBase,gapMean,fallMin,fallMax,bombStart,bombEnd,doublePie,speed,gapFloor,fallFloor,laneStepMs,mixedLaneMs,columnWeights,maxSame,speedFactor,landXFor,moveSpeed,reactMs,minShift});this.reset(0);
   }
   reset(now){this.random=rng(this.seed);this.startedAt=now;this.nextAt=now+800;this.lastColumn=0;this.sameColumn=0;this.count=0;this.landings=[];this.lastLandX=null;}
   // 0 at the start of a round, 1 at the end (and after it).
@@ -53,6 +61,22 @@ export class DropWaves {
     }
     return true;
   }
+  // A second pie that comes together with the first. It is placed so that at least a gap of SAFE_GAP_MIN of the middle part of the picture is left clear of both
+  // pies' danger zones, so the player can always dodge them (the pies cannot be caught for points). Returns {column,fall,tag} or null.
+  #twin(column,x,now,fall) {
+    const lane=c=>[.35,.5,.65][c-1],others=[1,2,3].filter(c=>c!==column),start=Math.floor(this.random()*others.length);
+    for(let i=0;i<others.length;i++){
+      const c2=others[(start+i)%others.length];
+      for(let t=0;t<4;t++){
+        const tag=100+t,x2=this.landXFor?this.landXFor(c2,tag):undefined,a=Number.isFinite(x)?x:lane(column),b=Number.isFinite(x2)?x2:lane(c2);
+        if(!safeGapLeft(a,b))continue;
+        const fall2=Math.max(MIN_FALL_MS,fall+(this.random()*300-150));
+        this.landings.push({column:c2,bomb:true,at:now+fall2,x:x2});
+        return {column:c2,fall:Math.round(fall2),...(x2!==undefined?{tag}:{})};
+      }
+    }
+    return null;
+  }
   // Returns {column,variant,fall} when a drop should start now, else null. `active` is how many auto or chat drops are on screen.
   update(now,active=0) {
     if(!finite(now)||!finite(active))return null;
@@ -65,12 +89,14 @@ export class DropWaves {
       const column=this.#column();
       // speedFactor [lo,hi] (theme): every shot is made faster by its own factor, drawn uniformly (decimals, e.g. 1.27), so speeds are very varied; fallFloor is the ceiling.
       const factor=this.speedFactor?this.speedFactor[0]+this.random()*(this.speedFactor[1]-this.speedFactor[0]):1;
-      const fall=Math.max(this.fallFloor,(this.fallMin+this.random()*(this.fallMax-this.fallMin))*(1-.35*d)/factor);
+      // `speed` (the difficulty level) shortens every fall before the reachability check, so the check sees the real landing times.
+      const fall=Math.max(MIN_FALL_MS,Math.max(this.fallFloor,(this.fallMin+this.random()*(this.fallMax-this.fallMin))*(1-.35*d)/factor)/this.speed);
       const x=this.landXFor?this.landXFor(column,tries):undefined;   // `tries` is part of the shot's id, so every retry can land on the other side
       if(!this.#reachable(column,bomb,now+fall,x))continue;
       this.sameColumn=column===this.lastColumn?this.sameColumn+1:1;this.lastColumn=column;
       this.landings.push({column,bomb,at:now+fall,x});if(x!==undefined)this.lastLandX=x;
-      const drop={column,...(bomb?{variant:'BOMB'}:{}),fall:Math.round(fall),...(x!==undefined?{tag:tries}:{})};
+      const twin=bomb&&this.doublePie>0&&this.random()<this.doublePie?this.#twin(column,x,now,fall):null;
+      const drop={column,...(bomb?{variant:'BOMB'}:{}),fall:Math.round(fall),...(x!==undefined?{tag:tries}:{}),...(twin?{twin}:{})};
       this.nextAt=now+this.#gap(d);this.count++;
       return drop;
     }
