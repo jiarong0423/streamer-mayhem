@@ -6,7 +6,7 @@ import { dirname, resolve } from 'node:path';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'../dist');
 const routes=new Map([
-  ['/',['index.html','text/html; charset=utf-8']], ['/index.html',['index.html','text/html; charset=utf-8']],
+  ['/',['index.html','text/html; charset=utf-8']], ['/index.html',['index.html','text/html; charset=utf-8']], ['/live',['index.html','text/html; charset=utf-8']],
   ['/styles.css',['styles.css','text/css; charset=utf-8']], ['/ux.css',['ux.css','text/css; charset=utf-8']],
   ['/overlay.html',['overlay.html','text/html; charset=utf-8']], ['/overlay.css',['overlay.css','text/css; charset=utf-8']],
   ['/oauth-callback.html',['oauth-callback.html','text/html; charset=utf-8']],

@@ -90,7 +90,7 @@ export function drawCameraOverlay(ctx,geometry,snapshot,{clear=true,grid=false,n
         // Pie (theme): first the column flashes as a warning, then the pie appears directly at the target (no flight); it lands at p=1.
         const PIE_AT=.58;
         if(p<PIE_AT){
-          const blink=Math.sin(now/1000*2*Math.PI*3)>0?.38:.12;
+          const blink=.14+.07*Math.sin(now/1000*2*Math.PI*1.2);   // a calm slow pulse, not a 3 Hz strobe
           ctx.fillStyle=`rgba(255,90,70,${blink})`;ctx.fillRect(cx-ringHalf,rect.y,ringHalf*2,floor-rect.y);
           ctx.fillStyle=`rgba(255,236,230,${blink+.4})`;ctx.font=`900 ${Math.max(14,radius*2.4)}px sans-serif`;ctx.textAlign='center';ctx.fillText('!',cx,rect.y+radius*3);ctx.textAlign='left';
         }

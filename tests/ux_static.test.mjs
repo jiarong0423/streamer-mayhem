@@ -62,3 +62,8 @@ test('F-dead the face-mosquito and swat controls are gone from the page, and the
   assert.doesNotMatch(app,/1\.5 s to get under/);assert.doesNotMatch(app,/the grid now covers/);assert.doesNotMatch(app,/!bomb|OBS overlay carries the sound/);
   assert.doesNotMatch(app,/Wait a moment before throwing/);
 });
+
+test('UX-09 the /live route (or ?waves=0) keeps the round but stops the automatic waves, so only chat commands send balls and pies',()=>{
+  assert.match(app,/const chatOnly=location\.pathname\.replace\(\/\\\/\+\$\/,''\)==='\/live'\|\|pageParams\.get\('waves'\)==='0'/);
+  assert.match(app,/if\(!chatOnly&&autoDrops\.checked&&!roundEnding&&snapshot\.mode==='PLAYING'/);
+});

@@ -20,7 +20,7 @@ test('loopback server exposes the full application module graph without widening
     child.once('error',reject);child.once('exit',code=>{if(!settled)reject(new Error(`server exited before ready: ${code} ${stderr}`));});
   });
   try {
-    const origin=await ready;const index=await fetch(origin+'/');assert.equal(index.status,200);assert.match(await index.text(),/src="\.\/app\.mjs"/);
+    const origin=await ready;const index=await fetch(origin+'/');assert.equal(index.status,200);const live=await fetch(origin+'/live');assert.equal(live.status,200);assert.match(await live.text(),/src="\.\/app\.mjs"/);assert.match(await index.text(),/src="\.\/app\.mjs"/);
     const pending=['/app.mjs'],visited=new Set();
     while(pending.length){
       const path=pending.shift();if(visited.has(path))continue;visited.add(path);

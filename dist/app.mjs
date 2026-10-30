@@ -55,6 +55,9 @@ function feed(title,detail) {
 // Sound: synthesised in sfx.mjs, muted until the streamer clicks the sound button (browsers need a click, and a stream should never start noisy).
 // ?sfx=0 turns this page's sound off (the OBS overlay has no sound of its own); ?keepalive=1 keeps it running while the tab is hidden.
 const pageParams=new URLSearchParams(location.search);
+// Two modes by route: / is practice (automatic balls and pies keep the round going); /live (or ?waves=0) is the stream mode: the round, timer and level still run, but only real chat commands send balls and pies.
+const chatOnly=location.pathname.replace(/\/+$/,'')==='/live'||pageParams.get('waves')==='0';
+{const note=document.getElementById('mode-note');if(note){note.textContent=chatOnly?'Stream mode: only chat commands send balls and pies. ':'Practice mode: the game also sends balls and pies by itself. ';const link=document.createElement('a');link.href=chatOnly?'./':'./live';link.textContent=chatOnly?'Switch to practice mode':'Switch to stream mode';note.appendChild(link);}}
 function safeStorage(){try{return window.localStorage;}catch{return null;}}
 const sfx=createSfx({storage:safeStorage(),keepAlive:pageParams.get('keepalive')==='1'});
 const soundDisabled=pageParams.get('sfx')==='0';
@@ -390,7 +393,7 @@ function loopBody(){
   }
   stepStars(now);
   updateSound(snapshot);stepSession(now);
-  if(autoDrops.checked&&!roundEnding&&snapshot.mode==='PLAYING'&&(game.connection==='ONLINE'||(ircChat&&ircChat.status!=='STOPPED'))){
+  if(!chatOnly&&autoDrops.checked&&!roundEnding&&snapshot.mode==='PLAYING'&&(game.connection==='ONLINE'||(ircChat&&ircChat.status!=='STOPPED'))){
     const next=waves.update(now,snapshot.attacks.length);
     if(next){const id=`wave-${++waveSerial}-${next.tag??0}`;game.receiveWaveDrop({notificationId:id,messageId:id,actorId:id,receivedAt:performance.now()},next);
       if(next.twin){const tid=`wave-${waveSerial}-${next.twin.tag??0}`;game.receiveWaveDrop({notificationId:tid,messageId:tid,actorId:tid,receivedAt:performance.now()},{column:next.twin.column,variant:'BOMB',fall:next.twin.fall,...(next.twin.tag!==undefined?{tag:next.twin.tag}:{})});}   // a twin pie shares the serial so its landing spot matches what the generator checked
