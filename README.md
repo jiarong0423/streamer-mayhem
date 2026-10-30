@@ -43,7 +43,7 @@ To connect to real Twitch, follow [TWITCH_LIVE_SETUP.md](TWITCH_LIVE_SETUP.md). 
 node --test --test-force-exit tests/*.test.mjs
 ```
 
-The suite reports 382 tests; on 30 Oct all 382 passed in a run where loopback listening was permitted (inside a sandbox the 2 `serve_local` tests fail with `EPERM` because they cannot bind `127.0.0.1`). Tests use fake clocks, synthetic event IDs and generated landmarks.
+The suite reports 406 tests; on 30 Oct all 406 passed in a run where loopback listening was permitted (inside a sandbox the 2 `serve_local` tests fail with `EPERM` because they cannot bind `127.0.0.1`). Tests use fake clocks, synthetic event IDs and generated landmarks.
 
 ## Honest scope
 

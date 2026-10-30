@@ -5,7 +5,7 @@ import {COLORS,FONT_STACK,strokedText} from './art.mjs';
 import {cleanViewerName,sanitizeName} from './eventsub_adapter.mjs';
 export const TICKER_H=.085;
 export const VERSUS_H=.016;            // thin tug-of-war bar under the strip
-export const CHAT_POINTS={MISS:10,BOMB:25};   // what chat earns when the streamer misses a ball / catches a pie              // height of the strip, as a fraction of the arena height
+export const CHAT_POINTS={MISS:2,BOMB:2};   // what chat earns when the streamer misses a ball / catches a pie (same scale as a 2-3 point ball)              // height of the strip, as a fraction of the arena height
 export const TICKER_MAX=8;              // entries kept
 export const TICKER_TTL_MS=90000;       // an entry leaves the strip after this long
 export const STREAK_GAP_MS=20000;       // two shots by the same viewer within this time are a streak
