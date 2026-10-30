@@ -42,6 +42,6 @@ You need a Twitch account (with two-factor authentication enabled, which Twitch 
 ## Verification checklist for the demo video
 
 - [ ] Status shows connected to the live channel.
-- [ ] A real viewer message from Twitch chat triggers a ball or pie (not a simulator button). Not yet done at the time of writing.
+- [x] A real viewer message from Twitch chat triggers a ball or pie (not a simulator button). Done with a second Twitch account on a real channel; shown in the demo video.
 - [ ] Overlay visible in OBS above the camera.
 - [ ] Simulated events are never presented as live ones.

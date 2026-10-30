@@ -111,4 +111,4 @@ Run the existing local page with `node scripts/serve-local.mjs`. Existing Matrix
 - Each game shares dedupe/actor/global gates, is mutually exclusive with projectiles and other games, and suppresses ring damage while active. Missing joint controls demonstrate UNKNOWN; source stop/calibration/reset cancels safely. Desktop canvas remains visible while scrolling controls.
 - Controller, relay and transparent overlay use `synthetic-state-v4` / `synthetic-closed-v4`. New/old readers reject mixed identities. Only bounded render geometry and challenge state cross the in-memory loopback relay; no event/actor IDs or credential fields.
 
-Candidate code and author tests do not constitute independent acceptance. Complete synthetic functionality is under concentrated local and Claude Cloud review; real OBS/device/live integration is a separate frozen boundary.
+Candidate code and author tests do not constitute independent acceptance. Complete synthetic functionality is under concentrated local and independent review; real OBS/device/live integration is a separate frozen boundary.
