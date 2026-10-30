@@ -88,7 +88,7 @@ export function drawCameraOverlay(ctx,geometry,snapshot,{clear=true,grid=false,n
       }
       if(bomb){
         // Pie (theme): first the column flashes as a warning, then the pie appears directly at the target (no flight); it lands at p=1.
-        const PIE_AT=.72;
+        const PIE_AT=.58;
         if(p<PIE_AT){
           const blink=Math.sin(now/1000*2*Math.PI*3)>0?.38:.12;
           ctx.fillStyle=`rgba(255,90,70,${blink})`;ctx.fillRect(cx-ringHalf,rect.y,ringHalf*2,floor-rect.y);
@@ -100,10 +100,14 @@ export function drawCameraOverlay(ctx,geometry,snapshot,{clear=true,grid=false,n
           const q=Math.min(1,(p-PIE_AT)/(1-PIE_AT)),faceY=face&&Number.isFinite(face.y)?Math.max(rect.y,Math.min(face.y,floor)):rect.y+rect.height*.6;
           // A lob towards the camera: it starts small and high above the face, falls and swells quickly, and leaves a trail of fading earlier positions (consecutive frames) so it reads as thrown.
           const aimX=face&&Number.isFinite(face.x)&&Math.abs(face.x-cx)<=ringHalf?face.x:cx;   // a pie that will hit flies at the face, one that will miss flies down its lane
-          const at=qq=>({x:aimX+Math.sin(qq*9)*radius*.25*(1-qq),y:faceY-rect.height*.32*(1-qq)*(1-qq),r:radius*(.5+4.2*qq*qq*qq),rot:Math.sin(qq*7)*.14*(1-qq)});
+          // Thrown from the side edge farthest from the target, in a low arc across the screen, spinning and growing as it nears the camera.
+          const fromX=arc.side>0?rect.x+rect.width+radius:rect.x-radius,dir=fromX>aimX?1:-1,startY=rect.y+radius;   // upper-left or upper-right corner, picked at random per pie (arc.side is seeded by the event id, so it stays put between frames)
+          const pos=qq=>({x:fromX+(aimX-fromX)*qq,y:startY+(faceY-startY)*(.15*qq+.85*qq*qq)});   // a true projectile arc: constant sideways speed, gravity only on the vertical (y grows with time squared), so it always heads down and never rises
+          // Thrown like a plate: it tumbles end over end (a turn and a half, spin direction follows the side it comes from), slows as it nears and lands cream-down on the face.
+          const at=qq=>({...pos(qq),r:radius*(.6+3.9*qq*qq*qq),rot:Math.PI+dir*Math.PI*3*(1-qq),sy:1});
           for(let k=4;k>=0;k--){
             const qq=q-.06*k;if(qq<0)continue;
-            const f=at(qq);ctx.save();ctx.translate(f.x,f.y);ctx.rotate(f.rot);ctx.globalAlpha=k?.1*(5-k)*(.4+.6*q):.55+.45*q;drawPie(ctx,0,0,f.r,now);ctx.restore();
+            const f=at(qq);ctx.save();ctx.translate(f.x,f.y);ctx.rotate(f.rot);ctx.scale(1,f.sy);ctx.globalAlpha=k?.1*(5-k)*(.4+.6*q):.55+.45*q;drawPie(ctx,0,0,f.r,now);ctx.restore();
           }
         }
         continue;

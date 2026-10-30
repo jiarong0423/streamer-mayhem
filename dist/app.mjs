@@ -1,5 +1,5 @@
 import { MatrixGame, gradeFor } from './matrix.mjs';
-import { createSfx } from './sfx.mjs';
+import { createSfx, SFX_KEY } from './sfx.mjs';
 import { EventSubAdapter, syntheticChat, syntheticWelcome } from './eventsub_adapter.mjs';
 import { MockEventSubTransport } from './mock_eventsub_transport.mjs';
 import { MockOAuth } from './mock_oauth.mjs';
@@ -459,7 +459,10 @@ function stepSession(now){
   syncStart();startMessage('Catch the balls in the hoop, dodge the pies. Esc stops.');
 }
 $('#start-playing').addEventListener('click',()=>{
-  if(sfx.enabled&&!sfx.unlocked)sfx.unlock();                                       // a remembered "sound on" needs one click per page load
+  // Sound is on by default: the first Start click (a user gesture, which browsers require) turns it on unless the streamer already chose, or the page has ?sfx=0.
+  let chosen=true;try{chosen=localStorage.getItem(SFX_KEY)!==null;}catch{/* storage blocked: treat as chosen, stay muted */}
+  if(!soundDisabled&&!chosen&&!sfx.enabled){sfx.setEnabled(true);sfx.unlock().then(ok=>{if(!ok)sfx.setEnabled(false);syncSound(!ok);});}
+  if(sfx.enabled&&!sfx.unlocked)sfx.unlock().then(()=>syncSound());                // a remembered "sound on" needs one click per page load
   if(session.phase==='idle'||session.phase==='over')startPlaying();else stopPlaying();
 });
 document.addEventListener('keydown',event=>{

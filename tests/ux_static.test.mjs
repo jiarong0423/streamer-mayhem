@@ -15,8 +15,9 @@ test('UX-01 every #id the page code looks up exists in index.html',()=>{
   for(const id of ['start-playing','start-status','sound-toggle','sound-volume','camera-video'])assert.ok(ids.has(id),id);
 });
 
-test('UX-02 sound starts muted: nothing in the page code unlocks or enables audio without a click',()=>{
-  const clicks=[...app.matchAll(/\.setEnabled\(true\)/g)].length;assert.equal(clicks,1,'only the sound button turns sound on');
+test('UX-02 sound is on by default but only from a click: nothing in the page code enables audio outside a click handler',()=>{
+  const clicks=[...app.matchAll(/\.setEnabled\(true\)/g)].length;assert.equal(clicks,2,'only the sound button and the first Start click turn sound on');
+  assert.match(app,/\$\('#start-playing'\)\.addEventListener\('click',\(\)=>\{[\s\S]*?localStorage\.getItem\(SFX_KEY\)[\s\S]*?sfx\.setEnabled\(true\)/);
   assert.match(app,/\$\('#sound-toggle'\)\.addEventListener\('click',async\(\)=>\{[\s\S]*?sfx\.setEnabled\(true\)/);
   assert.doesNotMatch(app,/AudioContext/,'the context lives in sfx.mjs only');
   assert.match(html,/id="sound-toggle"[^>]*aria-pressed="false"/);
